@@ -4,3 +4,4 @@ export * from './BackupManager';
 export * from './S3Client';
 export * from './PostgreSQLClient';
 export * from './RetentionManager';
+export * from './CronScheduler';
