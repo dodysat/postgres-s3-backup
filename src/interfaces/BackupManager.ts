@@ -52,5 +52,5 @@ export interface BackupManager {
   executeBackup(): Promise<BackupResult>;
   
   /** Validate the current configuration */
-  validateConfiguration(): boolean;
+  validateConfiguration(): Promise<boolean>;
 }
