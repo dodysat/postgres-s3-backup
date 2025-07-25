@@ -131,7 +131,7 @@ interface EnvironmentConfig {
 ## Implementation Details
 
 ### Technology Stack
-- **Runtime**: Node.js 18+ (Alpine Linux base image)
+- **Runtime**: Node.js 22+ (Alpine Linux base image)
 - **Language**: TypeScript for type safety and better maintainability
 - **PostgreSQL Client**: `pg_dump` command-line tool
 - **S3 SDK**: AWS SDK v3 for JavaScript
@@ -237,7 +237,7 @@ The application will use `node-cron` to parse and execute cron expressions:
 
 ### Docker Image Structure
 ```dockerfile
-FROM node:18-alpine
+FROM node:22-alpine
 RUN apk add --no-cache postgresql-client
 WORKDIR /app
 COPY package*.json ./
