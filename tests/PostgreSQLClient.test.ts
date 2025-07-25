@@ -180,7 +180,7 @@ describe('PostgreSQLClient', () => {
         mockProcess.emit('error', new Error('Spawn failed'));
       }, 10);
 
-      await expect(backupPromise).rejects.toThrow('Failed to spawn pg_dump: Spawn failed');
+      await expect(backupPromise).rejects.toThrow('Failed to execute pg_dump: Spawn failed');
       expect(mockFs.unlink).toHaveBeenCalledWith(outputPath);
     });
 

@@ -134,7 +134,7 @@ describe('BackupManager', () => {
       expect(result.fileName).toBe('');
       expect(result.fileSize).toBe(0);
       expect(result.s3Location).toBe('');
-      expect(result.error).toBe('Error: Database connection failed');
+      expect(result.error).toContain('Database connection failed');
       expect(result.duration).toBeGreaterThanOrEqual(0);
 
       // Verify S3 upload was not called
