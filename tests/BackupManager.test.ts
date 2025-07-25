@@ -1,4 +1,4 @@
-import { BackupManager } from '../src/clients/BackupManager';
+import { BackupManager, BackupError, ValidationError, RetryableError } from '../src/clients/BackupManager';
 import { PostgreSQLClient } from '../src/interfaces/PostgreSQLClient';
 import { S3Client } from '../src/interfaces/S3Client';
 import { RetentionManager } from '../src/interfaces/RetentionManager';
@@ -134,7 +134,7 @@ describe('BackupManager', () => {
       expect(result.fileName).toBe('');
       expect(result.fileSize).toBe(0);
       expect(result.s3Location).toBe('');
-      expect(result.error).toBe('Database connection failed');
+      expect(result.error).toBe('Error: Database connection failed');
       expect(result.duration).toBeGreaterThanOrEqual(0);
 
       // Verify S3 upload was not called
@@ -159,7 +159,7 @@ describe('BackupManager', () => {
 
       // Assert
       expect(result.success).toBe(false);
-      expect(result.error).toBe('S3 upload failed');
+      expect(result.error).toBe('Error: S3 upload failed');
 
       // Verify temp file cleanup was attempted
       expect(mockFs.unlink).toHaveBeenCalledWith(
@@ -513,6 +513,232 @@ describe('BackupManager', () => {
         // Assert
         expect(result).toBe(expected);
       });
+    });
+  });
+
+  describe('error handling and recovery', () => {
+    beforeEach(() => {
+      // Mock setTimeout for retry logic tests
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('should retry PostgreSQL backup creation on transient failures', async () => {
+      // Arrange
+      const transientError = new Error('Connection timeout');
+      const mockBackupInfo: BackupInfo = {
+        filePath: '/tmp/postgres-backup-test.sql.gz',
+        fileSize: 1024000,
+        databaseName: 'testdb',
+        timestamp: new Date(),
+      };
+
+      mockPostgresClient.createBackup
+        .mockRejectedValueOnce(transientError)
+        .mockRejectedValueOnce(transientError)
+        .mockResolvedValueOnce(mockBackupInfo);
+
+      mockS3Client.uploadFile.mockResolvedValue('s3://test-bucket/backups/test.sql.gz');
+      mockRetentionManager.cleanupExpiredBackups.mockResolvedValue({
+        deletedCount: 0,
+        totalCount: 0,
+        deletedKeys: [],
+        errors: [],
+      });
+
+      // Act
+      const backupPromise = backupManager.executeBackup();
+      
+      // Fast-forward through retry delays
+      await jest.advanceTimersByTimeAsync(5000); // First retry delay
+      await jest.advanceTimersByTimeAsync(10000); // Second retry delay
+      
+      const result = await backupPromise;
+
+      // Assert
+      expect(result.success).toBe(true);
+      expect(mockPostgresClient.createBackup).toHaveBeenCalledTimes(3);
+    }, 10000);
+
+    it('should not retry on non-retryable errors', async () => {
+      // Arrange
+      const authError = new Error('authentication failed');
+      mockPostgresClient.createBackup.mockRejectedValue(authError);
+
+      // Act
+      const result = await backupManager.executeBackup();
+
+      // Assert
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('authentication failed');
+      expect(mockPostgresClient.createBackup).toHaveBeenCalledTimes(1); // No retries
+    });
+
+    it('should fail after maximum retry attempts', async () => {
+      // Arrange
+      const persistentError = new Error('Network error');
+      mockPostgresClient.createBackup.mockRejectedValue(persistentError);
+
+      // Act
+      const backupPromise = backupManager.executeBackup();
+      
+      // Fast-forward through all retry delays
+      jest.advanceTimersByTime(5000); // First retry
+      jest.advanceTimersByTime(10000); // Second retry
+      
+      const result = await backupPromise;
+
+      // Assert
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Failed to PostgreSQL backup creation after 2 attempts');
+      expect(mockPostgresClient.createBackup).toHaveBeenCalledTimes(2); // Original + 1 retry (max 2 for DB operations)
+    });
+
+    it('should handle permission errors during temp file cleanup', async () => {
+      // Arrange
+      const mockBackupInfo: BackupInfo = {
+        filePath: '/tmp/postgres-backup-test.sql.gz',
+        fileSize: 1024000,
+        databaseName: 'testdb',
+        timestamp: new Date(),
+      };
+
+      mockPostgresClient.createBackup.mockResolvedValue(mockBackupInfo);
+      mockS3Client.uploadFile.mockResolvedValue('s3://test-bucket/backups/test.sql.gz');
+      mockRetentionManager.cleanupExpiredBackups.mockResolvedValue({
+        deletedCount: 0,
+        totalCount: 0,
+        deletedKeys: [],
+        errors: [],
+      });
+
+      const permissionError = new Error('Permission denied') as any;
+      permissionError.code = 'EACCES';
+      mockFs.unlink.mockRejectedValue(permissionError);
+
+      // Act
+      const result = await backupManager.executeBackup();
+
+      // Assert
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Permission denied');
+    });
+
+    it('should generate unique operation IDs for tracking', async () => {
+      // Arrange
+      const mockBackupInfo: BackupInfo = {
+        filePath: '/tmp/postgres-backup-test.sql.gz',
+        fileSize: 1024000,
+        databaseName: 'testdb',
+        timestamp: new Date(),
+      };
+
+      mockPostgresClient.createBackup.mockResolvedValue(mockBackupInfo);
+      mockS3Client.uploadFile.mockResolvedValue('s3://test-bucket/backups/test.sql.gz');
+      mockRetentionManager.cleanupExpiredBackups.mockResolvedValue({
+        deletedCount: 0,
+        totalCount: 0,
+        deletedKeys: [],
+        errors: [],
+      });
+
+      // Act
+      await backupManager.executeBackup();
+      await backupManager.executeBackup();
+
+      // Assert - Check that console.log was called with operation IDs
+      const logCalls = (console.log as jest.Mock).mock.calls;
+      const operationIdCalls = logCalls.filter(call => 
+        call[0] && call[0].includes('[backup-') && call[0].includes('Starting backup operation')
+      );
+      
+      expect(operationIdCalls.length).toBe(2);
+      
+      // Extract operation IDs and verify they're different
+      const operationId1 = operationIdCalls[0][0].match(/\[([^\]]+)\]/)?.[1];
+      const operationId2 = operationIdCalls[1][0].match(/\[([^\]]+)\]/)?.[1];
+      
+      expect(operationId1).toBeDefined();
+      expect(operationId2).toBeDefined();
+      expect(operationId1).not.toBe(operationId2);
+    });
+
+    it('should format errors consistently', async () => {
+      // Arrange
+      const customError = new ValidationError('Invalid configuration', 'testField');
+      mockPostgresClient.createBackup.mockRejectedValue(customError);
+
+      // Act
+      const result = await backupManager.executeBackup();
+
+      // Assert
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('ValidationError: Invalid configuration');
+    });
+
+    it('should handle non-Error objects gracefully', async () => {
+      // Arrange
+      const stringError = 'Something went wrong';
+      mockPostgresClient.createBackup.mockRejectedValue(stringError);
+
+      // Act
+      const result = await backupManager.executeBackup();
+
+      // Assert
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Something went wrong');
+    });
+
+    it('should log stack traces for debugging', async () => {
+      // Arrange
+      const errorWithStack = new Error('Test error');
+      errorWithStack.stack = 'Error: Test error\n    at test.js:1:1';
+      mockPostgresClient.createBackup.mockRejectedValue(errorWithStack);
+
+      // Act
+      await backupManager.executeBackup();
+
+      // Assert
+      const errorCalls = (console.error as jest.Mock).mock.calls;
+      const stackTraceCalls = errorCalls.filter(call => 
+        call[0] && call[0].includes('Stack trace:')
+      );
+      
+      expect(stackTraceCalls.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('custom error types', () => {
+    it('should create BackupError with proper properties', () => {
+      const cause = new Error('Original error');
+      const backupError = new BackupError('Backup failed', 'test_operation', cause);
+
+      expect(backupError.name).toBe('BackupError');
+      expect(backupError.message).toBe('Backup failed');
+      expect(backupError.operation).toBe('test_operation');
+      expect(backupError.cause).toBe(cause);
+      expect(backupError.stack).toContain('Caused by:');
+    });
+
+    it('should create ValidationError with proper properties', () => {
+      const validationError = new ValidationError('Invalid field', 'testField');
+
+      expect(validationError.name).toBe('ValidationError');
+      expect(validationError.message).toBe('Invalid field');
+      expect(validationError.field).toBe('testField');
+    });
+
+    it('should create RetryableError with proper properties', () => {
+      const retryableError = new RetryableError('Operation failed', 'test_op', 3, 5);
+
+      expect(retryableError.name).toBe('RetryableError');
+      expect(retryableError.message).toBe('Operation failed');
+      expect(retryableError.operation).toBe('test_op');
+      expect(retryableError.attempt).toBe(3);
+      expect(retryableError.maxAttempts).toBe(5);
     });
   });
 });

@@ -1,4 +1,4 @@
-import { RetentionManager } from '../src/clients/RetentionManager';
+import { RetentionManager, RetentionError, RetentionListingError, RetentionDeletionError } from '../src/clients/RetentionManager';
 import { S3Client } from '../src/interfaces/S3Client';
 import { BackupConfig } from '../src/interfaces/BackupConfig';
 import { S3Object } from '../src/interfaces/S3Client';
@@ -354,6 +354,242 @@ describe('RetentionManager', () => {
       expect(result.deletedKeys).toContain('backups/postgres-backup-2023-12-10_10-00-00.sql.gz');
       expect(result.deletedKeys).toContain('backups/manual-backup-old.sql.gz');
       expect(result.deletedKeys).not.toContain('backups/manual-backup-recent.sql.gz');
+    });
+  });
+
+  describe('enhanced error handling and recovery', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('should retry S3 listing operations on transient failures', async () => {
+      const transientError = new Error('Network timeout');
+      mockS3Client.listObjects
+        .mockRejectedValueOnce(transientError)
+        .mockRejectedValueOnce(transientError)
+        .mockResolvedValueOnce([]);
+
+      const cleanupPromise = retentionManager.cleanupExpiredBackups('backups/');
+      
+      // Fast-forward through retry delays
+      jest.advanceTimersByTime(1000); // First retry
+      jest.advanceTimersByTime(2000); // Second retry
+      
+      const result = await cleanupPromise;
+
+      expect(result.totalCount).toBe(0);
+      expect(result.errors).toHaveLength(0);
+      expect(mockS3Client.listObjects).toHaveBeenCalledTimes(3);
+    });
+
+    it('should retry individual deletion operations on transient failures', async () => {
+      const mockObjects: S3Object[] = [
+        {
+          key: 'backups/postgres-backup-2023-12-10_10-00-00.sql.gz',
+          lastModified: new Date('2023-12-10T10:00:00Z'),
+          size: 1024,
+        },
+      ];
+
+      const transientError = new Error('Temporary S3 error');
+      mockS3Client.listObjects.mockResolvedValue(mockObjects);
+      mockS3Client.deleteObject
+        .mockRejectedValueOnce(transientError)
+        .mockResolvedValueOnce();
+
+      const cleanupPromise = retentionManager.cleanupExpiredBackups('backups/');
+      
+      // Fast-forward through retry delay
+      jest.advanceTimersByTime(1000);
+      
+      const result = await cleanupPromise;
+
+      expect(result.deletedCount).toBe(1);
+      expect(result.errors).toHaveLength(0);
+      expect(mockS3Client.deleteObject).toHaveBeenCalledTimes(2);
+    });
+
+    it('should not retry on non-retryable errors', async () => {
+      const authError = new Error('Access denied');
+      authError.name = 'AccessDenied';
+      
+      mockS3Client.listObjects.mockRejectedValue(authError);
+
+      const result = await retentionManager.cleanupExpiredBackups('backups/');
+
+      expect(result.errors).toContain('Failed to list backups for cleanup: Error: Access denied');
+      expect(mockS3Client.listObjects).toHaveBeenCalledTimes(1); // No retries
+    });
+
+    it('should handle HTTP 4xx errors as non-retryable', async () => {
+      const clientError = new Error('Client error') as any;
+      clientError.$metadata = { httpStatusCode: 403 };
+      
+      mockS3Client.listObjects.mockRejectedValue(clientError);
+
+      const result = await retentionManager.cleanupExpiredBackups('backups/');
+
+      expect(result.errors).toContain('Failed to list backups for cleanup: Error: Client error');
+      expect(mockS3Client.listObjects).toHaveBeenCalledTimes(1); // No retries
+    });
+
+    it('should fail after maximum retry attempts', async () => {
+      const persistentError = new Error('Persistent network error');
+      mockS3Client.listObjects.mockRejectedValue(persistentError);
+
+      const cleanupPromise = retentionManager.cleanupExpiredBackups('backups/');
+      
+      // Fast-forward through all retry delays
+      jest.advanceTimersByTime(1000); // First retry
+      jest.advanceTimersByTime(2000); // Second retry
+      jest.advanceTimersByTime(4000); // Third retry
+      
+      const result = await cleanupPromise;
+
+      expect(result.errors).toContain('Failed to list backups for cleanup after 3 attempts');
+      expect(mockS3Client.listObjects).toHaveBeenCalledTimes(3);
+    });
+
+    it('should log retry attempts with exponential backoff', async () => {
+      const transientError = new Error('Network error');
+      mockS3Client.listObjects
+        .mockRejectedValueOnce(transientError)
+        .mockRejectedValueOnce(transientError)
+        .mockResolvedValueOnce([]);
+
+      const cleanupPromise = retentionManager.cleanupExpiredBackups('backups/');
+      
+      // Fast-forward through retry delays
+      jest.advanceTimersByTime(1000); // First retry (1s delay)
+      jest.advanceTimersByTime(2000); // Second retry (2s delay)
+      
+      await cleanupPromise;
+
+      expect(mockConsoleWarn).toHaveBeenCalledWith(
+        expect.stringContaining('Attempt 1 failed for list S3 objects for retention cleanup: Error: Network error. Retrying in 1000ms...')
+      );
+      expect(mockConsoleWarn).toHaveBeenCalledWith(
+        expect.stringContaining('Attempt 2 failed for list S3 objects for retention cleanup: Error: Network error. Retrying in 2000ms...')
+      );
+    });
+
+    it('should log detailed error context for deletion failures', async () => {
+      const mockObjects: S3Object[] = [
+        {
+          key: 'backups/postgres-backup-2023-12-10_10-00-00.sql.gz',
+          lastModified: new Date('2023-12-10T10:00:00Z'),
+          size: 1024,
+        },
+      ];
+
+      const deletionError = new Error('Permission denied');
+      deletionError.name = 'AccessDenied';
+      
+      mockS3Client.listObjects.mockResolvedValue(mockObjects);
+      mockS3Client.deleteObject.mockRejectedValue(deletionError);
+
+      await retentionManager.cleanupExpiredBackups('backups/');
+
+      expect(mockConsoleError).toHaveBeenCalledWith('Deletion error context:', {
+        key: 'backups/postgres-backup-2023-12-10_10-00-00.sql.gz',
+        lastModified: '2023-12-10T10:00:00.000Z',
+        size: 1024,
+        errorType: 'AccessDenied'
+      });
+    });
+
+    it('should calculate and log success rate', async () => {
+      const mockObjects: S3Object[] = [
+        {
+          key: 'backups/backup1.sql.gz',
+          lastModified: new Date('2023-12-10T10:00:00Z'),
+          size: 1024,
+        },
+        {
+          key: 'backups/backup2.sql.gz',
+          lastModified: new Date('2023-12-09T10:00:00Z'),
+          size: 1024,
+        },
+        {
+          key: 'backups/backup3.sql.gz',
+          lastModified: new Date('2023-12-08T10:00:00Z'),
+          size: 1024,
+        },
+      ];
+
+      mockS3Client.listObjects.mockResolvedValue(mockObjects);
+      mockS3Client.deleteObject
+        .mockResolvedValueOnce() // First succeeds
+        .mockRejectedValueOnce(new Error('Failed')) // Second fails
+        .mockResolvedValueOnce(); // Third succeeds
+
+      await retentionManager.cleanupExpiredBackups('backups/');
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('(66.7% success rate)')
+      );
+      expect(mockConsoleWarn).toHaveBeenCalledWith(
+        'Retention cleanup had 1 errors. Some backups may not have been deleted.'
+      );
+    });
+
+    it('should handle unexpected errors during cleanup', async () => {
+      // Mock an unexpected error that occurs outside the main try-catch
+      const unexpectedError = new Error('Unexpected system error');
+      mockS3Client.listObjects.mockImplementation(() => {
+        throw unexpectedError; // Synchronous throw instead of rejection
+      });
+
+      const result = await retentionManager.cleanupExpiredBackups('backups/');
+
+      expect(result.errors).toContain('Unexpected error during retention cleanup: Error: Unexpected system error');
+      expect(mockConsoleError).toHaveBeenCalledWith('Retention cleanup stack trace:', expect.any(String));
+    });
+
+    it('should handle non-Error objects in retry logic', async () => {
+      mockS3Client.listObjects.mockRejectedValue('String error');
+
+      const result = await retentionManager.cleanupExpiredBackups('backups/');
+
+      expect(result.errors).toContain('Failed to list backups for cleanup: String error');
+    });
+  });
+
+  describe('custom error types', () => {
+    it('should create RetentionError with proper properties', () => {
+      const cause = new Error('Original error');
+      const retentionError = new RetentionError('Retention failed', 'test_operation', cause);
+
+      expect(retentionError.name).toBe('RetentionError');
+      expect(retentionError.message).toBe('Retention failed');
+      expect(retentionError.operation).toBe('test_operation');
+      expect(retentionError.cause).toBe(cause);
+      expect(retentionError.stack).toContain('Caused by:');
+    });
+
+    it('should create RetentionListingError with proper properties', () => {
+      const cause = new Error('Listing failed');
+      const listingError = new RetentionListingError('Cannot list objects', cause);
+
+      expect(listingError.name).toBe('RetentionListingError');
+      expect(listingError.message).toBe('Cannot list objects');
+      expect(listingError.operation).toBe('listing');
+      expect(listingError.cause).toBe(cause);
+    });
+
+    it('should create RetentionDeletionError with proper properties', () => {
+      const cause = new Error('Deletion failed');
+      const deletionError = new RetentionDeletionError('Cannot delete object', 'test-key', cause);
+
+      expect(deletionError.name).toBe('RetentionDeletionError');
+      expect(deletionError.message).toBe('Cannot delete object');
+      expect(deletionError.operation).toBe('deletion');
+      expect(deletionError.key).toBe('test-key');
+      expect(deletionError.cause).toBe(cause);
     });
   });
 

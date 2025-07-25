@@ -3,6 +3,33 @@ import { CronScheduler as ICronScheduler, CronSchedulerConfig } from '../interfa
 import { BackupManager } from '../interfaces/BackupManager';
 
 /**
+ * Custom error classes for cron scheduling operations
+ */
+export class CronSchedulerError extends Error {
+  constructor(message: string, public readonly operation: string, public readonly cause?: Error) {
+    super(message);
+    this.name = 'CronSchedulerError';
+    if (cause) {
+      this.stack = `${this.stack}\nCaused by: ${cause.stack}`;
+    }
+  }
+}
+
+export class CronValidationError extends CronSchedulerError {
+  constructor(message: string, public readonly expression: string) {
+    super(message, 'validation');
+    this.name = 'CronValidationError';
+  }
+}
+
+export class CronExecutionError extends CronSchedulerError {
+  constructor(message: string, cause?: Error) {
+    super(message, 'execution', cause);
+    this.name = 'CronExecutionError';
+  }
+}
+
+/**
  * CronScheduler implementation using node-cron library
  * Handles scheduled backup execution with proper error handling and overlap prevention
  */
@@ -24,7 +51,7 @@ export class CronScheduler implements ICronScheduler {
   }
 
   /**
-   * Start the cron scheduler with the configured interval
+   * Start the cron scheduler with enhanced error handling
    */
   start(): void {
     if (this.task) {
@@ -32,38 +59,59 @@ export class CronScheduler implements ICronScheduler {
       return;
     }
 
-    // Validate cron expression before starting
-    if (!this.validateCronExpression(this.config.cronExpression)) {
-      throw new Error(`Invalid cron expression: ${this.config.cronExpression}`);
-    }
-
-    this.logger.log(`Starting cron scheduler with expression: ${this.config.cronExpression}`);
-
-    // Create the scheduled task
-    this.task = cron.schedule(
-      this.config.cronExpression,
-      async () => {
-        await this.executeScheduledBackup();
-      },
-      {
-        scheduled: false, // Don't start immediately
-        timezone: this.config.timezone || 'UTC'
+    try {
+      // Validate cron expression before starting
+      if (!this.validateCronExpression(this.config.cronExpression)) {
+        throw new CronValidationError(`Invalid cron expression: ${this.config.cronExpression}`, this.config.cronExpression);
       }
-    );
 
-    // Start the task
-    this.task.start();
+      this.logger.log(`Starting cron scheduler with expression: ${this.config.cronExpression} (timezone: ${this.config.timezone || 'UTC'})`);
 
-    this.logger.log('CronScheduler started successfully');
+      // Create the scheduled task with error handling wrapper
+      this.task = cron.schedule(
+        this.config.cronExpression,
+        async () => {
+          try {
+            await this.executeScheduledBackup();
+          } catch (error) {
+            // This should not happen as executeScheduledBackup handles its own errors,
+            // but we add this as a safety net
+            const cronError = new CronExecutionError(`Unexpected error in scheduled backup execution: ${this.formatError(error)}`, error instanceof Error ? error : undefined);
+            this.logger.error(cronError.message);
+            
+            if (error instanceof Error && error.stack) {
+              this.logger.error('Unexpected error stack trace:', error.stack);
+            }
+          }
+        },
+        {
+          scheduled: false, // Don't start immediately
+          timezone: this.config.timezone || 'UTC'
+        }
+      );
 
-    // Run immediately if configured to do so
-    if (this.config.runOnInit) {
-      this.logger.log('Running initial backup due to runOnInit configuration');
-      setImmediate(() => {
-        this.executeScheduledBackup().catch(error => {
-          this.logger.error('Initial backup execution failed:', error.message);
+      // Start the task
+      this.task.start();
+
+      this.logger.log('CronScheduler started successfully');
+
+      // Run immediately if configured to do so
+      if (this.config.runOnInit) {
+        this.logger.log('Running initial backup due to runOnInit configuration');
+        setImmediate(() => {
+          this.executeScheduledBackup().catch(error => {
+            this.logger.error('Initial backup execution failed:', this.formatError(error));
+          });
         });
-      });
+      }
+    } catch (error) {
+      if (error instanceof CronValidationError) {
+        throw error;
+      }
+      
+      const startError = new CronSchedulerError(`Failed to start cron scheduler: ${this.formatError(error)}`, 'start', error instanceof Error ? error : undefined);
+      this.logger.error(startError.message);
+      throw startError;
     }
   }
 
@@ -116,7 +164,7 @@ export class CronScheduler implements ICronScheduler {
   }
 
   /**
-   * Execute a scheduled backup with overlap prevention and error handling
+   * Execute a scheduled backup with overlap prevention and enhanced error handling
    */
   private async executeScheduledBackup(): Promise<void> {
     // Prevent overlapping backups
@@ -127,42 +175,83 @@ export class CronScheduler implements ICronScheduler {
 
     this.isBackupRunning = true;
     const startTime = new Date();
+    const executionId = this.generateExecutionId();
 
     try {
-      this.logger.log(`Starting scheduled backup at ${startTime.toISOString()}`);
+      this.logger.log(`[${executionId}] Starting scheduled backup at ${startTime.toISOString()}`);
 
-      // Execute the backup
-      const result = await this.backupManager.executeBackup();
+      // Execute the backup with timeout protection
+      const result = await Promise.race([
+        this.backupManager.executeBackup(),
+        this.createTimeoutPromise(60 * 60 * 1000) // 1 hour timeout
+      ]);
 
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
 
       if (result.success) {
         this.logger.log(
-          `Scheduled backup completed successfully in ${duration}ms. ` +
+          `[${executionId}] Scheduled backup completed successfully in ${duration}ms. ` +
           `File: ${result.fileName}, Size: ${result.fileSize} bytes, Location: ${result.s3Location}`
         );
       } else {
         this.logger.error(
-          `Scheduled backup failed after ${duration}ms. Error: ${result.error}`
+          `[${executionId}] Scheduled backup failed after ${duration}ms. Error: ${result.error}`
         );
       }
     } catch (error) {
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       
       this.logger.error(
-        `Scheduled backup execution failed after ${duration}ms: ${errorMessage}`
+        `[${executionId}] Scheduled backup execution failed after ${duration}ms: ${this.formatError(error)}`
       );
       
       // Log stack trace for debugging
       if (error instanceof Error && error.stack) {
-        this.logger.error('Stack trace:', error.stack);
+        this.logger.error(`[${executionId}] Stack trace:`, error.stack);
       }
+
+      // Log additional context for debugging
+      this.logger.error(`[${executionId}] Execution context:`, {
+        startTime: startTime.toISOString(),
+        duration,
+        cronExpression: this.config.cronExpression,
+        timezone: this.config.timezone || 'UTC'
+      });
     } finally {
       this.isBackupRunning = false;
-      this.logger.log('Backup execution completed, ready for next scheduled run');
+      this.logger.log(`[${executionId}] Backup execution completed, ready for next scheduled run`);
     }
+  }
+
+  /**
+   * Create a timeout promise for backup execution
+   */
+  private createTimeoutPromise(timeoutMs: number): Promise<never> {
+    return new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(new CronExecutionError(`Backup execution timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+    });
+  }
+
+  /**
+   * Generate unique execution ID for tracking
+   */
+  private generateExecutionId(): string {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const random = Math.random().toString(36).substring(2, 6);
+    return `cron-${timestamp}-${random}`;
+  }
+
+  /**
+   * Format error for consistent logging
+   */
+  private formatError(error: any): string {
+    if (error instanceof Error) {
+      return `${error.name}: ${error.message}`;
+    }
+    return String(error);
   }
 }

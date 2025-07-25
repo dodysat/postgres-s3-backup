@@ -8,6 +8,33 @@ import { RetentionManager } from '../interfaces/RetentionManager';
 import { BackupConfig } from '../interfaces/BackupConfig';
 
 /**
+ * Custom error classes for better error handling and categorization
+ */
+export class BackupError extends Error {
+  constructor(message: string, public readonly operation: string, public readonly cause?: Error) {
+    super(message);
+    this.name = 'BackupError';
+    if (cause) {
+      this.stack = `${this.stack}\nCaused by: ${cause.stack}`;
+    }
+  }
+}
+
+export class ValidationError extends Error {
+  constructor(message: string, public readonly field?: string) {
+    super(message);
+    this.name = 'ValidationError';
+  }
+}
+
+export class RetryableError extends Error {
+  constructor(message: string, public readonly operation: string, public readonly attempt: number, public readonly maxAttempts: number) {
+    super(message);
+    this.name = 'RetryableError';
+  }
+}
+
+/**
  * BackupManager implementation that orchestrates the complete backup process
  * Coordinates PostgreSQL backup creation, S3 upload, and retention cleanup
  */
@@ -30,15 +57,16 @@ export class BackupManager implements IBackupManager {
   }
 
   /**
-   * Execute a complete backup operation
+   * Execute a complete backup operation with comprehensive error handling
    * Creates backup, uploads to S3, cleans up retention, and handles errors
    */
   async executeBackup(): Promise<BackupResult> {
     const startTime = Date.now();
     let tempFilePath: string | null = null;
+    const operationId = this.generateOperationId();
     
     try {
-      console.log('Starting backup operation...');
+      console.log(`[${operationId}] Starting backup operation...`);
       
       // Generate backup filename with timestamp
       const fileName = this.generateBackupFileName();
@@ -47,31 +75,37 @@ export class BackupManager implements IBackupManager {
       // Create temporary file path
       tempFilePath = join(tmpdir(), fileName);
       
-      console.log(`Creating backup: ${fileName}`);
+      console.log(`[${operationId}] Creating backup: ${fileName}`);
       
-      // Step 1: Create PostgreSQL backup
-      const backupInfo = await this.postgresClient.createBackup(tempFilePath);
+      // Step 1: Create PostgreSQL backup with retry logic
+      const backupInfo = await this.withRetry(
+        () => this.postgresClient.createBackup(tempFilePath!),
+        'PostgreSQL backup creation',
+        operationId,
+        2, // Max 2 retries for database operations
+        [5000, 10000] // 5s, 10s delays
+      );
       
-      console.log(`Backup created successfully: ${backupInfo.fileSize} bytes`);
+      console.log(`[${operationId}] Backup created successfully: ${backupInfo.fileSize} bytes`);
       
-      // Step 2: Upload to S3
-      console.log(`Uploading backup to S3: ${s3Key}`);
+      // Step 2: Upload to S3 with retry logic (S3Client already has its own retry logic)
+      console.log(`[${operationId}] Uploading backup to S3: ${s3Key}`);
       const s3Location = await this.s3Client.uploadFile(tempFilePath, s3Key);
       
-      console.log(`Backup uploaded successfully to: ${s3Location}`);
+      console.log(`[${operationId}] Backup uploaded successfully to: ${s3Location}`);
       
       // Step 3: Clean up retention (run in background, don't fail backup on retention errors)
-      this.performRetentionCleanup().catch(error => {
-        console.warn('Retention cleanup failed (backup still successful):', error.message);
+      this.performRetentionCleanup(operationId).catch(error => {
+        console.warn(`[${operationId}] Retention cleanup failed (backup still successful):`, this.formatError(error));
       });
       
       // Step 4: Clean up temporary file
-      await this.cleanupTempFile(tempFilePath);
+      await this.cleanupTempFile(tempFilePath, operationId);
       tempFilePath = null; // Mark as cleaned up
       
       const duration = Date.now() - startTime;
       
-      console.log(`Backup operation completed successfully in ${duration}ms`);
+      console.log(`[${operationId}] Backup operation completed successfully in ${duration}ms`);
       
       return {
         success: true,
@@ -83,14 +117,19 @@ export class BackupManager implements IBackupManager {
       
     } catch (error) {
       const duration = Date.now() - startTime;
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const formattedError = this.formatError(error);
       
-      console.error(`Backup operation failed after ${duration}ms:`, errorMessage);
+      console.error(`[${operationId}] Backup operation failed after ${duration}ms:`, formattedError);
+      
+      // Log stack trace for debugging
+      if (error instanceof Error && error.stack) {
+        console.error(`[${operationId}] Stack trace:`, error.stack);
+      }
       
       // Clean up temporary file if it exists
       if (tempFilePath) {
-        await this.cleanupTempFile(tempFilePath).catch(cleanupError => {
-          console.warn('Failed to cleanup temporary file:', cleanupError.message);
+        await this.cleanupTempFile(tempFilePath, operationId).catch(cleanupError => {
+          console.warn(`[${operationId}] Failed to cleanup temporary file:`, this.formatError(cleanupError));
         });
       }
       
@@ -100,7 +139,7 @@ export class BackupManager implements IBackupManager {
         fileSize: 0,
         s3Location: '',
         duration,
-        error: errorMessage
+        error: formattedError
       };
     }
   }
@@ -189,38 +228,136 @@ export class BackupManager implements IBackupManager {
   }
 
   /**
-   * Perform retention cleanup in the background
+   * Perform retention cleanup in the background with operation tracking
    */
-  private async performRetentionCleanup(): Promise<void> {
+  private async performRetentionCleanup(operationId: string): Promise<void> {
     try {
       const prefix = this.config.s3Path || '';
       const result = await this.retentionManager.cleanupExpiredBackups(prefix);
       
       if (result.deletedCount > 0) {
-        console.log(`Retention cleanup completed: ${result.deletedCount} expired backups deleted`);
+        console.log(`[${operationId}] Retention cleanup completed: ${result.deletedCount} expired backups deleted`);
       }
       
       if (result.errors.length > 0) {
-        console.warn(`Retention cleanup had ${result.errors.length} errors:`, result.errors);
+        console.warn(`[${operationId}] Retention cleanup had ${result.errors.length} errors:`, result.errors);
       }
     } catch (error) {
-      throw new Error(`Retention cleanup failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new BackupError(`Retention cleanup failed: ${this.formatError(error)}`, 'retention_cleanup', error instanceof Error ? error : undefined);
     }
   }
 
   /**
-   * Clean up temporary backup file
+   * Clean up temporary backup file with operation tracking
    */
-  private async cleanupTempFile(filePath: string): Promise<void> {
+  private async cleanupTempFile(filePath: string, operationId: string): Promise<void> {
     try {
       await fs.unlink(filePath);
-      console.log(`Cleaned up temporary file: ${filePath}`);
+      console.log(`[${operationId}] Cleaned up temporary file: ${filePath}`);
     } catch (error) {
       // Only log if file actually exists (ignore ENOENT errors)
       if ((error as any).code !== 'ENOENT') {
-        throw new Error(`Failed to cleanup temporary file ${filePath}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        throw new BackupError(`Failed to cleanup temporary file ${filePath}: ${this.formatError(error)}`, 'temp_file_cleanup', error instanceof Error ? error : undefined);
       }
     }
+  }
+
+  /**
+   * Execute an operation with retry logic and exponential backoff
+   */
+  private async withRetry<T>(
+    operation: () => Promise<T>,
+    operationName: string,
+    operationId: string,
+    maxRetries: number = 3,
+    delays: number[] = [1000, 2000, 4000]
+  ): Promise<T> {
+    let lastError: Error;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error as Error;
+        
+        // Don't retry on certain error types
+        if (this.isNonRetryableError(error)) {
+          console.error(`[${operationId}] Non-retryable error in ${operationName}:`, this.formatError(error));
+          throw error;
+        }
+
+        if (attempt === maxRetries) {
+          const finalError = new RetryableError(
+            `Failed to ${operationName} after ${maxRetries} attempts. Last error: ${this.formatError(lastError)}`,
+            operationName,
+            attempt,
+            maxRetries
+          );
+          console.error(`[${operationId}] ${finalError.message}`);
+          throw finalError;
+        }
+
+        // Calculate delay for this attempt
+        const delay = delays[attempt - 1] || delays[delays.length - 1];
+        console.warn(
+          `[${operationId}] Attempt ${attempt} failed for ${operationName}: ${this.formatError(lastError)}. Retrying in ${delay}ms...`
+        );
+        
+        await this.sleep(delay);
+      }
+    }
+
+    throw lastError!;
+  }
+
+  /**
+   * Check if an error should not be retried
+   */
+  private isNonRetryableError(error: any): boolean {
+    // Don't retry on validation errors, configuration errors, or permission errors
+    if (error instanceof ValidationError) {
+      return true;
+    }
+
+    // Don't retry on specific PostgreSQL errors
+    if (error.message?.includes('authentication failed') ||
+        error.message?.includes('database does not exist') ||
+        error.message?.includes('permission denied')) {
+      return true;
+    }
+
+    // Don't retry on file system permission errors
+    if (error.code === 'EACCES' || error.code === 'EPERM') {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Format error for consistent logging
+   */
+  private formatError(error: any): string {
+    if (error instanceof Error) {
+      return `${error.name}: ${error.message}`;
+    }
+    return String(error);
+  }
+
+  /**
+   * Generate unique operation ID for tracking
+   */
+  private generateOperationId(): string {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const random = Math.random().toString(36).substring(2, 8);
+    return `backup-${timestamp}-${random}`;
+  }
+
+  /**
+   * Sleep for specified milliseconds
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**

@@ -1,4 +1,4 @@
-import { CronScheduler } from '../src/clients/CronScheduler';
+import { CronScheduler, CronSchedulerError, CronValidationError, CronExecutionError } from '../src/clients/CronScheduler';
 import { CronSchedulerConfig } from '../src/interfaces/CronScheduler';
 import { BackupManager, BackupResult } from '../src/interfaces/BackupManager';
 
@@ -358,6 +358,266 @@ describe('CronScheduler', () => {
       );
       // Should not try to log stack trace for non-Error objects
       expect(mockLogger.error).not.toHaveBeenCalledWith('Stack trace:', expect.anything());
+    });
+  });
+
+  describe('enhanced error handling and recovery', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    describe('start method error handling', () => {
+      it('should throw CronValidationError for invalid cron expression', () => {
+        (cron.validate as jest.Mock).mockReturnValue(false);
+
+        expect(() => scheduler.start()).toThrow(CronValidationError);
+        expect(() => scheduler.start()).toThrow('Invalid cron expression: 0 2 * * *');
+      });
+
+      it('should throw CronSchedulerError for unexpected start failures', () => {
+        (cron.schedule as jest.Mock).mockImplementation(() => {
+          throw new Error('Unexpected scheduling error');
+        });
+
+        expect(() => scheduler.start()).toThrow(CronSchedulerError);
+        expect(() => scheduler.start()).toThrow('Failed to start cron scheduler');
+        expect(mockLogger.error).toHaveBeenCalledWith(
+          expect.stringContaining('Failed to start cron scheduler')
+        );
+      });
+
+      it('should log timezone information on start', () => {
+        scheduler.start();
+
+        expect(mockLogger.log).toHaveBeenCalledWith(
+          'Starting cron scheduler with expression: 0 2 * * * (timezone: UTC)'
+        );
+      });
+    });
+
+    describe('scheduled execution error handling', () => {
+      let scheduledCallback: () => Promise<void>;
+
+      beforeEach(() => {
+        scheduler.start();
+        scheduledCallback = (cron.schedule as jest.Mock).mock.calls[0][1];
+      });
+
+      it('should handle backup execution timeout', async () => {
+        // Mock a backup that never resolves
+        const neverResolvingPromise = new Promise(() => {});
+        mockBackupManager.executeBackup.mockReturnValue(neverResolvingPromise as Promise<BackupResult>);
+
+        const executionPromise = scheduledCallback();
+
+        // Fast-forward past the timeout (1 hour)
+        jest.advanceTimersByTime(60 * 60 * 1000 + 1000);
+
+        await executionPromise;
+
+        expect(mockLogger.error).toHaveBeenCalledWith(
+          expect.stringContaining('Backup execution timed out after 3600000ms')
+        );
+      });
+
+      it('should generate unique execution IDs for tracking', async () => {
+        const mockResult: BackupResult = {
+          success: true,
+          fileName: 'test.sql.gz',
+          fileSize: 1024,
+          s3Location: 's3://bucket/test.sql.gz',
+          duration: 1000
+        };
+
+        mockBackupManager.executeBackup.mockResolvedValue(mockResult);
+
+        await scheduledCallback();
+        await scheduledCallback();
+
+        const logCalls = mockLogger.log.mock.calls;
+        const executionIdCalls = logCalls.filter(call => 
+          call[0] && call[0].includes('[cron-') && call[0].includes('Starting scheduled backup')
+        );
+
+        expect(executionIdCalls.length).toBe(2);
+
+        // Extract execution IDs and verify they're different
+        const executionId1 = executionIdCalls[0][0].match(/\[([^\]]+)\]/)?.[1];
+        const executionId2 = executionIdCalls[1][0].match(/\[([^\]]+)\]/)?.[1];
+
+        expect(executionId1).toBeDefined();
+        expect(executionId2).toBeDefined();
+        expect(executionId1).not.toBe(executionId2);
+      });
+
+      it('should log execution context on errors', async () => {
+        const error = new Error('Backup execution failed');
+        mockBackupManager.executeBackup.mockRejectedValue(error);
+
+        await scheduledCallback();
+
+        expect(mockLogger.error).toHaveBeenCalledWith(
+          expect.stringContaining('Execution context:'),
+          expect.objectContaining({
+            cronExpression: '0 2 * * *',
+            timezone: 'UTC'
+          })
+        );
+      });
+
+      it('should handle unexpected errors in scheduled callback wrapper', async () => {
+        // Mock cron.schedule to call our callback wrapper
+        const callbackWrapper = jest.fn().mockImplementation(async () => {
+          throw new Error('Unexpected wrapper error');
+        });
+
+        (cron.schedule as jest.Mock).mockImplementation((_expr, _callback, _options) => {
+          // Replace the callback with our wrapper that throws
+          _callback = callbackWrapper;
+          return mockTask;
+        });
+
+        const errorScheduler = new CronScheduler(config, mockBackupManager, mockLogger);
+        errorScheduler.start();
+
+        const wrappedCallback = (cron.schedule as jest.Mock).mock.calls[0][1];
+        await wrappedCallback();
+
+        expect(mockLogger.error).toHaveBeenCalledWith(
+          expect.stringContaining('Unexpected error in scheduled backup execution')
+        );
+      });
+
+      it('should format different error types consistently', async () => {
+        const testCases = [
+          { error: new Error('Standard error'), expected: 'Error: Standard error' },
+          { error: 'String error', expected: 'String error' },
+          { error: { message: 'Object error' }, expected: '[object Object]' },
+          { error: null, expected: 'null' },
+          { error: undefined, expected: 'undefined' }
+        ];
+
+        for (const testCase of testCases) {
+          mockBackupManager.executeBackup.mockRejectedValue(testCase.error);
+          await scheduledCallback();
+
+          expect(mockLogger.error).toHaveBeenCalledWith(
+            expect.stringContaining(testCase.expected)
+          );
+
+          jest.clearAllMocks();
+        }
+      });
+
+      it('should handle backup manager returning race condition winner', async () => {
+        // Test that Promise.race works correctly with timeout
+        const quickResult: BackupResult = {
+          success: true,
+          fileName: 'quick-backup.sql.gz',
+          fileSize: 1024,
+          s3Location: 's3://bucket/quick-backup.sql.gz',
+          duration: 100
+        };
+
+        mockBackupManager.executeBackup.mockResolvedValue(quickResult);
+
+        await scheduledCallback();
+
+        expect(mockLogger.log).toHaveBeenCalledWith(
+          expect.stringContaining('Scheduled backup completed successfully')
+        );
+        expect(mockLogger.log).not.toHaveBeenCalledWith(
+          expect.stringContaining('timed out')
+        );
+      });
+    });
+
+    describe('error recovery and resilience', () => {
+      it('should continue scheduling after backup failures', async () => {
+        scheduler.start();
+        const scheduledCallback = (cron.schedule as jest.Mock).mock.calls[0][1];
+
+        // First execution fails
+        mockBackupManager.executeBackup.mockRejectedValueOnce(new Error('First failure'));
+        await scheduledCallback();
+
+        // Second execution succeeds
+        const successResult: BackupResult = {
+          success: true,
+          fileName: 'recovery-backup.sql.gz',
+          fileSize: 1024,
+          s3Location: 's3://bucket/recovery-backup.sql.gz',
+          duration: 1000
+        };
+        mockBackupManager.executeBackup.mockResolvedValueOnce(successResult);
+        await scheduledCallback();
+
+        expect(mockLogger.error).toHaveBeenCalledWith(
+          expect.stringContaining('First failure')
+        );
+        expect(mockLogger.log).toHaveBeenCalledWith(
+          expect.stringContaining('Scheduled backup completed successfully')
+        );
+      });
+
+      it('should reset backup running flag after errors', async () => {
+        scheduler.start();
+        const scheduledCallback = (cron.schedule as jest.Mock).mock.calls[0][1];
+
+        // First execution fails
+        mockBackupManager.executeBackup.mockRejectedValue(new Error('Backup failed'));
+        await scheduledCallback();
+
+        // Second execution should not be skipped due to "already running"
+        mockBackupManager.executeBackup.mockResolvedValue({
+          success: true,
+          fileName: 'test.sql.gz',
+          fileSize: 1024,
+          s3Location: 's3://bucket/test.sql.gz',
+          duration: 1000
+        });
+        await scheduledCallback();
+
+        expect(mockLogger.warn).not.toHaveBeenCalledWith(
+          'Backup is already running, skipping this scheduled execution'
+        );
+      });
+    });
+  });
+
+  describe('custom error types', () => {
+    it('should create CronSchedulerError with proper properties', () => {
+      const cause = new Error('Original error');
+      const cronError = new CronSchedulerError('Scheduler failed', 'test_operation', cause);
+
+      expect(cronError.name).toBe('CronSchedulerError');
+      expect(cronError.message).toBe('Scheduler failed');
+      expect(cronError.operation).toBe('test_operation');
+      expect(cronError.cause).toBe(cause);
+      expect(cronError.stack).toContain('Caused by:');
+    });
+
+    it('should create CronValidationError with proper properties', () => {
+      const validationError = new CronValidationError('Invalid expression', '* * * *');
+
+      expect(validationError.name).toBe('CronValidationError');
+      expect(validationError.message).toBe('Invalid expression');
+      expect(validationError.operation).toBe('validation');
+      expect(validationError.expression).toBe('* * * *');
+    });
+
+    it('should create CronExecutionError with proper properties', () => {
+      const cause = new Error('Execution failed');
+      const executionError = new CronExecutionError('Cannot execute backup', cause);
+
+      expect(executionError.name).toBe('CronExecutionError');
+      expect(executionError.message).toBe('Cannot execute backup');
+      expect(executionError.operation).toBe('execution');
+      expect(executionError.cause).toBe(cause);
     });
   });
 

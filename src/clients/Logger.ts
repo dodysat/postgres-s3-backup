@@ -85,7 +85,12 @@ export class Logger implements ILogger {
         error: {
           name: error.name,
           message: error.message,
-          stack: error.stack
+          stack: error.stack,
+          // Add additional error properties if available
+          ...(error as any).code && { code: (error as any).code },
+          ...(error as any).errno && { errno: (error as any).errno },
+          ...(error as any).syscall && { syscall: (error as any).syscall },
+          ...(error as any).path && { path: (error as any).path }
         }
       })
     };
