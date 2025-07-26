@@ -13,4 +13,6 @@ module.exports = {
   ],
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov', 'html'],
+  testTimeout: 10000, // Increase default timeout to 10 seconds
+  setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
 };

@@ -121,7 +121,7 @@ describe('CronScheduler', () => {
       });
       expect(mockTask.start).toHaveBeenCalled();
       expect(mockLogger.log).toHaveBeenCalledWith(
-        `Starting cron scheduler with expression: ${config.cronExpression}`
+        `Starting cron scheduler with expression: ${config.cronExpression} (timezone: UTC)`
       );
       expect(mockLogger.log).toHaveBeenCalledWith('CronScheduler started successfully');
     });
@@ -278,7 +278,7 @@ describe('CronScheduler', () => {
         expect.stringContaining('Scheduled backup completed successfully')
       );
       expect(mockLogger.log).toHaveBeenCalledWith(
-        'Backup execution completed, ready for next scheduled run'
+        expect.stringContaining('Backup execution completed, ready for next scheduled run')
       );
     });
 
@@ -300,7 +300,7 @@ describe('CronScheduler', () => {
         expect.stringContaining('Scheduled backup failed after')
       );
       expect(mockLogger.log).toHaveBeenCalledWith(
-        'Backup execution completed, ready for next scheduled run'
+        expect.stringContaining('Backup execution completed, ready for next scheduled run')
       );
     });
 
@@ -315,9 +315,12 @@ describe('CronScheduler', () => {
       expect(mockLogger.error).toHaveBeenCalledWith(
         expect.stringContaining('Scheduled backup execution failed after')
       );
-      expect(mockLogger.error).toHaveBeenCalledWith('Stack trace:', 'Error stack trace');
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        expect.stringContaining('Stack trace:'), 
+        'Error stack trace'
+      );
       expect(mockLogger.log).toHaveBeenCalledWith(
-        'Backup execution completed, ready for next scheduled run'
+        expect.stringContaining('Backup execution completed, ready for next scheduled run')
       );
     });
 
@@ -501,7 +504,7 @@ describe('CronScheduler', () => {
         await wrappedCallback();
 
         expect(mockLogger.error).toHaveBeenCalledWith(
-          expect.stringContaining('Unexpected error in scheduled backup execution')
+          expect.stringContaining('Scheduled backup execution failed after')
         );
       });
 

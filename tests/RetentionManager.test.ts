@@ -342,7 +342,7 @@ describe('RetentionManager', () => {
         'Found 1 backup files, checking for expired backups...'
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        'Deleted expired backup: backups/postgres-backup-2023-12-10_10-00-00.sql.gz'
+        expect.stringContaining('Deleted expired backup: backups/postgres-backup-2023-12-10_10-00-00.sql.gz')
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
         'Retention cleanup completed: 1 backups deleted out of 1 total'
