@@ -316,7 +316,7 @@ describe('CronScheduler', () => {
         expect.stringContaining('Scheduled backup execution failed after')
       );
       expect(mockLogger.error).toHaveBeenCalledWith(
-        expect.stringContaining('Stack trace:'), 
+        expect.stringContaining('Stack trace:'),
         'Error stack trace'
       );
       expect(mockLogger.log).toHaveBeenCalledWith(

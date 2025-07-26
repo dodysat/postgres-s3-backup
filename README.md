@@ -19,12 +19,14 @@ docker pull username/postgres-s3-backup:1.2.3
 ```
 
 **Available Tags:**
+
 - `latest` - Latest stable release
 - `1.2.3` - Specific version tags
 - `1.2` - Latest patch version of 1.2.x
 - `1` - Latest minor version of 1.x.x
 
 **Supported Platforms:**
+
 - `linux/amd64` (Intel/AMD 64-bit)
 - `linux/arm64` (ARM 64-bit, Apple Silicon)
 
