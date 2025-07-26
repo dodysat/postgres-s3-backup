@@ -15,5 +15,4 @@ specs/
 *.test.ts
 *.spec.ts
 coverage/
-.nyc_output/
-dist/ 
+.nyc_output/ 
