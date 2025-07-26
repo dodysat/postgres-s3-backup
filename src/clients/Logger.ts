@@ -11,33 +11,30 @@ export class Logger implements ILogger {
         winston.format.timestamp(),
         winston.format.errors({ stack: true }),
         winston.format.json(),
-        winston.format.printf((info) => {
+        winston.format.printf(info => {
           const { timestamp, level, message, stack, ...meta } = info;
           const logEntry: any = {
             timestamp,
             level,
-            message
+            message,
           };
-          
+
           if (stack) {
             logEntry.stack = stack;
           }
-          
+
           if (Object.keys(meta).length > 0) {
             logEntry.meta = this.sanitizeMeta(meta);
           }
-          
+
           return JSON.stringify(logEntry);
         })
       ),
       transports: [
         new winston.transports.Console({
-          format: winston.format.combine(
-            winston.format.colorize(),
-            winston.format.simple()
-          )
-        })
-      ]
+          format: winston.format.combine(winston.format.colorize(), winston.format.simple()),
+        }),
+      ],
     });
   }
 
@@ -46,20 +43,28 @@ export class Logger implements ILogger {
    */
   private sanitizeMeta(meta: Record<string, any>): Record<string, any> {
     const sensitiveKeys = [
-      'password', 'secret', 'key', 'token', 'credential',
-      's3accesskey', 's3secretkey', 'postgresconnectionstring',
-      's3_access_key', 's3_secret_key', 'postgres_connection_string'
+      'password',
+      'secret',
+      'key',
+      'token',
+      'credential',
+      's3accesskey',
+      's3secretkey',
+      'postgresconnectionstring',
+      's3_access_key',
+      's3_secret_key',
+      'postgres_connection_string',
     ];
 
     const sanitized = { ...meta };
-    
+
     for (const [key, value] of Object.entries(sanitized)) {
       const lowerKey = key.toLowerCase();
       // Check if the key contains any sensitive terms or matches exactly
-      const isSensitive = sensitiveKeys.some(sensitive => 
-        lowerKey.includes(sensitive) || lowerKey === sensitive
+      const isSensitive = sensitiveKeys.some(
+        sensitive => lowerKey.includes(sensitive) || lowerKey === sensitive
       );
-      
+
       if (isSensitive) {
         sanitized[key] = '[REDACTED]';
       } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
@@ -87,12 +92,12 @@ export class Logger implements ILogger {
           message: error.message,
           stack: error.stack,
           // Add additional error properties if available
-          ...(error as any).code && { code: (error as any).code },
-          ...(error as any).errno && { errno: (error as any).errno },
-          ...(error as any).syscall && { syscall: (error as any).syscall },
-          ...(error as any).path && { path: (error as any).path }
-        }
-      })
+          ...((error as any).code && { code: (error as any).code }),
+          ...((error as any).errno && { errno: (error as any).errno }),
+          ...((error as any).syscall && { syscall: (error as any).syscall }),
+          ...((error as any).path && { path: (error as any).path }),
+        },
+      }),
     };
     this.winston.error(message, errorMeta);
   }
@@ -105,18 +110,23 @@ export class Logger implements ILogger {
     this.info('Backup operation started', {
       operation: 'backup_start',
       databaseName,
-      ...meta
+      ...meta,
     });
   }
 
-  logBackupComplete(fileName: string, fileSize: number, s3Location: string, duration: number): void {
+  logBackupComplete(
+    fileName: string,
+    fileSize: number,
+    s3Location: string,
+    duration: number
+  ): void {
     this.info('Backup operation completed successfully', {
       operation: 'backup_complete',
       fileName,
       fileSize,
       s3Location,
       duration,
-      fileSizeMB: Math.round(fileSize / 1024 / 1024 * 100) / 100
+      fileSizeMB: Math.round((fileSize / 1024 / 1024) * 100) / 100,
     });
   }
 
@@ -124,7 +134,7 @@ export class Logger implements ILogger {
     this.error(`Backup operation failed: ${operation}`, error, {
       operation: 'backup_error',
       failedOperation: operation,
-      ...meta
+      ...meta,
     });
   }
 
@@ -132,21 +142,21 @@ export class Logger implements ILogger {
     this.info('Retention cleanup completed', {
       operation: 'retention_cleanup',
       deletedCount,
-      retentionDays
+      retentionDays,
     });
   }
 
   logConfigurationStart(config: Record<string, any>): void {
     this.info('Application starting with configuration', {
       operation: 'startup',
-      config: this.sanitizeMeta(config)
+      config: this.sanitizeMeta(config),
     });
   }
 
   logScheduledExecution(cronExpression: string): void {
     this.info('Scheduled backup execution triggered', {
       operation: 'scheduled_execution',
-      cronExpression
+      cronExpression,
     });
   }
 
@@ -155,7 +165,7 @@ export class Logger implements ILogger {
    */
   static createFromEnvironment(): Logger {
     const logLevel = (process.env.LOG_LEVEL?.toLowerCase() as LogLevel) || LogLevel.INFO;
-    
+
     // Validate log level
     if (!Object.values(LogLevel).includes(logLevel)) {
       console.warn(`Invalid LOG_LEVEL: ${process.env.LOG_LEVEL}. Using INFO level.`);

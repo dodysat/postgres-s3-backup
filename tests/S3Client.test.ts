@@ -42,9 +42,11 @@ describe('S3Client', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    
+
     // Mock AWS S3Client constructor
-    (AWSS3Client as jest.MockedClass<typeof AWSS3Client>).mockImplementation(() => mockS3Client as any);
+    (AWSS3Client as jest.MockedClass<typeof AWSS3Client>).mockImplementation(
+      () => mockS3Client as any
+    );
 
     mockConfig = {
       s3Bucket: 'test-bucket',
@@ -103,9 +105,7 @@ describe('S3Client', () => {
 
       expect(mockStat).toHaveBeenCalledWith('/path/to/file.sql.gz');
       expect(mockCreateReadStream).toHaveBeenCalledWith('/path/to/file.sql.gz');
-      expect(mockSend).toHaveBeenCalledWith(
-        expect.any(PutObjectCommand)
-      );
+      expect(mockSend).toHaveBeenCalledWith(expect.any(PutObjectCommand));
       expect(result).toBe('s3://test-bucket/backup-2023-01-01.sql.gz');
     });
 
@@ -140,8 +140,9 @@ describe('S3Client', () => {
       authError.name = 'InvalidAccessKeyId';
       mockSend.mockRejectedValue(authError);
 
-      await expect(s3Client.uploadFile('/path/to/file.sql.gz', 'backup-2023-01-01.sql.gz'))
-        .rejects.toThrow('Invalid access key');
+      await expect(
+        s3Client.uploadFile('/path/to/file.sql.gz', 'backup-2023-01-01.sql.gz')
+      ).rejects.toThrow('Invalid access key');
 
       expect(mockSend).toHaveBeenCalledTimes(1);
     });
@@ -150,8 +151,11 @@ describe('S3Client', () => {
       const transientError = new Error('Network error');
       mockSend.mockRejectedValue(transientError);
 
-      await expect(s3Client.uploadFile('/path/to/file.sql.gz', 'backup-2023-01-01.sql.gz'))
-        .rejects.toThrow('Failed to upload file /path/to/file.sql.gz to backup-2023-01-01.sql.gz after 3 attempts');
+      await expect(
+        s3Client.uploadFile('/path/to/file.sql.gz', 'backup-2023-01-01.sql.gz')
+      ).rejects.toThrow(
+        'Failed to upload file /path/to/file.sql.gz to backup-2023-01-01.sql.gz after 3 attempts'
+      );
 
       expect(mockSend).toHaveBeenCalledTimes(3);
     });
@@ -177,9 +181,7 @@ describe('S3Client', () => {
 
       const result = await s3Client.listObjects('backups/');
 
-      expect(mockSend).toHaveBeenCalledWith(
-        expect.any(ListObjectsV2Command)
-      );
+      expect(mockSend).toHaveBeenCalledWith(expect.any(ListObjectsV2Command));
       expect(result).toEqual([
         {
           key: 'backups/backup-2023-01-01.sql.gz',
@@ -222,9 +224,7 @@ describe('S3Client', () => {
 
     it('should retry on transient errors', async () => {
       const transientError = new Error('Network error');
-      mockSend
-        .mockRejectedValueOnce(transientError)
-        .mockResolvedValueOnce({ Contents: [] });
+      mockSend.mockRejectedValueOnce(transientError).mockResolvedValueOnce({ Contents: [] });
 
       const result = await s3Client.listObjects('backups/');
 
@@ -239,9 +239,7 @@ describe('S3Client', () => {
 
       await s3Client.deleteObject('backups/backup-2023-01-01.sql.gz');
 
-      expect(mockSend).toHaveBeenCalledWith(
-        expect.any(DeleteObjectCommand)
-      );
+      expect(mockSend).toHaveBeenCalledWith(expect.any(DeleteObjectCommand));
 
       expect(DeleteObjectCommand).toHaveBeenCalledWith({
         Bucket: 'test-bucket',
@@ -251,9 +249,7 @@ describe('S3Client', () => {
 
     it('should retry on transient errors', async () => {
       const transientError = new Error('Network error');
-      mockSend
-        .mockRejectedValueOnce(transientError)
-        .mockResolvedValueOnce({});
+      mockSend.mockRejectedValueOnce(transientError).mockResolvedValueOnce({});
 
       await s3Client.deleteObject('backups/backup-2023-01-01.sql.gz');
 
@@ -265,8 +261,9 @@ describe('S3Client', () => {
       permissionError.name = 'AccessDenied';
       mockSend.mockRejectedValue(permissionError);
 
-      await expect(s3Client.deleteObject('backups/backup-2023-01-01.sql.gz'))
-        .rejects.toThrow('Access denied');
+      await expect(s3Client.deleteObject('backups/backup-2023-01-01.sql.gz')).rejects.toThrow(
+        'Access denied'
+      );
 
       expect(mockSend).toHaveBeenCalledTimes(1);
     });
@@ -278,9 +275,7 @@ describe('S3Client', () => {
 
       const result = await s3Client.testConnection();
 
-      expect(mockSend).toHaveBeenCalledWith(
-        expect.any(HeadBucketCommand)
-      );
+      expect(mockSend).toHaveBeenCalledWith(expect.any(HeadBucketCommand));
       expect(result).toBe(true);
     });
 
@@ -338,8 +333,7 @@ describe('S3Client', () => {
       (clientError as any).$metadata = { httpStatusCode: 403 };
       mockSend.mockRejectedValue(clientError);
 
-      await expect(s3Client.deleteObject('test-key'))
-        .rejects.toThrow('Client error');
+      await expect(s3Client.deleteObject('test-key')).rejects.toThrow('Client error');
 
       expect(mockSend).toHaveBeenCalledTimes(1);
     });

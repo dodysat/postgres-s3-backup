@@ -7,7 +7,7 @@ jest.mock('winston', () => {
     info: jest.fn(),
     warn: jest.fn(),
     error: jest.fn(),
-    debug: jest.fn()
+    debug: jest.fn(),
   };
 
   return {
@@ -19,11 +19,11 @@ jest.mock('winston', () => {
       json: jest.fn(),
       printf: jest.fn(),
       colorize: jest.fn(),
-      simple: jest.fn()
+      simple: jest.fn(),
     },
     transports: {
-      Console: jest.fn()
-    }
+      Console: jest.fn(),
+    },
   };
 });
 
@@ -70,8 +70,8 @@ describe('Logger', () => {
         error: {
           name: error.name,
           message: error.message,
-          stack: error.stack
-        }
+          stack: error.stack,
+        },
       });
     });
 
@@ -104,7 +104,7 @@ describe('Logger', () => {
       expect(mockWinston.info).toHaveBeenCalledWith('Backup operation started', {
         operation: 'backup_start',
         databaseName,
-        additional: 'info'
+        additional: 'info',
       });
     });
 
@@ -122,7 +122,7 @@ describe('Logger', () => {
         fileSize,
         s3Location,
         duration,
-        fileSizeMB: 1
+        fileSizeMB: 1,
       });
     });
 
@@ -140,8 +140,8 @@ describe('Logger', () => {
         error: {
           name: error.name,
           message: error.message,
-          stack: error.stack
-        }
+          stack: error.stack,
+        },
       });
     });
 
@@ -154,7 +154,7 @@ describe('Logger', () => {
       expect(mockWinston.info).toHaveBeenCalledWith('Retention cleanup completed', {
         operation: 'retention_cleanup',
         deletedCount,
-        retentionDays
+        retentionDays,
       });
     });
 
@@ -163,7 +163,7 @@ describe('Logger', () => {
         s3Bucket: 'test-bucket',
         s3AccessKey: 'secret-key',
         postgresConnectionString: 'postgres://user:pass@host/db',
-        backupInterval: '0 2 * * *'
+        backupInterval: '0 2 * * *',
       };
 
       logger.logConfigurationStart(config);
@@ -174,8 +174,8 @@ describe('Logger', () => {
           s3Bucket: 'test-bucket',
           s3AccessKey: '[REDACTED]',
           postgresConnectionString: '[REDACTED]',
-          backupInterval: '0 2 * * *'
-        }
+          backupInterval: '0 2 * * *',
+        },
       });
     });
 
@@ -186,7 +186,7 @@ describe('Logger', () => {
 
       expect(mockWinston.info).toHaveBeenCalledWith('Scheduled backup execution triggered', {
         operation: 'scheduled_execution',
-        cronExpression
+        cronExpression,
       });
     });
   });
@@ -205,7 +205,7 @@ describe('Logger', () => {
         postgresConnectionString: 'postgres://user:pass@host/db',
         S3_ACCESS_KEY: 'env-access-key',
         S3_SECRET_KEY: 'env-secret-key',
-        POSTGRES_CONNECTION_STRING: 'env-connection-string'
+        POSTGRES_CONNECTION_STRING: 'env-connection-string',
       };
 
       logger.info('Test message', sensitiveConfig);
@@ -222,13 +222,13 @@ describe('Logger', () => {
           password: 'secret-password',
           credentials: {
             username: 'user',
-            secret: 'nested-secret'
-          }
+            secret: 'nested-secret',
+          },
         },
         s3: {
           bucket: 'test-bucket',
-          s3AccessKey: 'access-key'
-        }
+          s3AccessKey: 'access-key',
+        },
       };
 
       logger.info('Test nested config', nestedConfig);
@@ -257,12 +257,12 @@ describe('Logger', () => {
     it('should handle invalid log level and default to INFO', () => {
       process.env.LOG_LEVEL = 'invalid';
       const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-      
+
       const logger = Logger.createFromEnvironment();
-      
+
       expect(logger).toBeInstanceOf(Logger);
       expect(consoleSpy).toHaveBeenCalledWith('Invalid LOG_LEVEL: invalid. Using INFO level.');
-      
+
       consoleSpy.mockRestore();
     });
 
@@ -279,17 +279,17 @@ describe('Logger', () => {
         { bytes: 1024 * 1024, expectedMB: 1 },
         { bytes: 1024 * 1024 * 2.5, expectedMB: 2.5 },
         { bytes: 1024 * 1024 * 0.1, expectedMB: 0.1 },
-        { bytes: 1024 * 1024 * 10.567, expectedMB: 10.57 }
+        { bytes: 1024 * 1024 * 10.567, expectedMB: 10.57 },
       ];
 
       testCases.forEach(({ bytes, expectedMB }) => {
         logger.logBackupComplete('test.sql.gz', bytes, 's3://bucket/test.sql.gz', 1000);
-        
+
         expect(mockWinston.info).toHaveBeenCalledWith(
           'Backup operation completed successfully',
           expect.objectContaining({
             fileSize: bytes,
-            fileSizeMB: expectedMB
+            fileSizeMB: expectedMB,
           })
         );
       });

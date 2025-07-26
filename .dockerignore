@@ -2,17 +2,11 @@
 node_modules
 npm-debug.log*
 
-# Source files (only built dist/ is needed)
-src
-tests
-
-# Development files
-*.md
+# Development files (keep src and tsconfig.json for multi-stage build)
 .git
 .gitignore
 .eslintrc*
 jest.config.js
-tsconfig.json
 
 # IDE files
 .vscode
@@ -32,3 +26,7 @@ coverage
 # Temporary files
 tmp
 temp
+
+# Documentation (except README for production image)
+*.md
+!README.md

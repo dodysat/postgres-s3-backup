@@ -34,7 +34,7 @@ describe('PostgreSQLBackupApplication', () => {
     backupInterval: '0 2 * * *',
     s3Path: 'backups',
     retentionDays: 30,
-    logLevel: 'info'
+    logLevel: 'info',
   };
 
   beforeEach(() => {
@@ -45,18 +45,26 @@ describe('PostgreSQLBackupApplication', () => {
     // Setup mocks
     mockConfigurationManager = ConfigurationManager as jest.Mocked<typeof ConfigurationManager>;
     mockLogger = new Logger() as jest.Mocked<Logger>;
-    mockBackupManager = new BackupManager({} as any, {} as any, {} as any, {} as any) as jest.Mocked<BackupManager>;
+    mockBackupManager = new BackupManager(
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any
+    ) as jest.Mocked<BackupManager>;
     mockCronScheduler = new CronScheduler({} as any, {} as any) as jest.Mocked<CronScheduler>;
     mockPostgresClient = new PostgreSQLClient('') as jest.Mocked<PostgreSQLClient>;
     mockS3Client = new S3Client({} as any) as jest.Mocked<S3Client>;
-    mockRetentionManager = new RetentionManager({} as any, {} as any) as jest.Mocked<RetentionManager>;
+    mockRetentionManager = new RetentionManager(
+      {} as any,
+      {} as any
+    ) as jest.Mocked<RetentionManager>;
 
     // Setup default mock implementations
     mockConfigurationManager.loadConfiguration.mockReturnValue(mockConfig);
     mockConfigurationManager.sanitizeForLogging.mockReturnValue({
       s3Bucket: 'test-bucket',
       s3Path: 'backups',
-      backupInterval: '0 2 * * *'
+      backupInterval: '0 2 * * *',
     });
 
     mockBackupManager.validateConfiguration.mockResolvedValue(true);
@@ -64,11 +72,19 @@ describe('PostgreSQLBackupApplication', () => {
 
     // Mock constructors
     (Logger as jest.MockedClass<typeof Logger>).mockImplementation(() => mockLogger);
-    (BackupManager as jest.MockedClass<typeof BackupManager>).mockImplementation(() => mockBackupManager);
-    (CronScheduler as jest.MockedClass<typeof CronScheduler>).mockImplementation(() => mockCronScheduler);
-    (PostgreSQLClient as jest.MockedClass<typeof PostgreSQLClient>).mockImplementation(() => mockPostgresClient);
+    (BackupManager as jest.MockedClass<typeof BackupManager>).mockImplementation(
+      () => mockBackupManager
+    );
+    (CronScheduler as jest.MockedClass<typeof CronScheduler>).mockImplementation(
+      () => mockCronScheduler
+    );
+    (PostgreSQLClient as jest.MockedClass<typeof PostgreSQLClient>).mockImplementation(
+      () => mockPostgresClient
+    );
     (S3Client as jest.MockedClass<typeof S3Client>).mockImplementation(() => mockS3Client);
-    (RetentionManager as jest.MockedClass<typeof RetentionManager>).mockImplementation(() => mockRetentionManager);
+    (RetentionManager as jest.MockedClass<typeof RetentionManager>).mockImplementation(
+      () => mockRetentionManager
+    );
 
     app = new PostgreSQLBackupApplication();
   });
@@ -181,7 +197,7 @@ describe('PostgreSQLBackupApplication', () => {
     });
 
     it('should throw error if not initialized', async () => {
-      const mockExit = jest.spyOn(process, 'exit').mockImplementation((code) => {
+      const mockExit = jest.spyOn(process, 'exit').mockImplementation(code => {
         throw new Error(`process.exit called with code ${code}`);
       });
 
@@ -207,7 +223,9 @@ describe('PostgreSQLBackupApplication', () => {
 
       expect(mockLogger.info).toHaveBeenCalledWith('Initiating graceful shutdown...');
       expect(mockCronScheduler.stop).toHaveBeenCalled();
-      expect(mockLogger.info).toHaveBeenCalledWith('PostgreSQL S3 Backup Service shutdown completed');
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'PostgreSQL S3 Backup Service shutdown completed'
+      );
     });
 
     it('should handle shutdown when scheduler is not running', async () => {
@@ -217,7 +235,9 @@ describe('PostgreSQLBackupApplication', () => {
 
       expect(mockLogger.info).toHaveBeenCalledWith('Initiating graceful shutdown...');
       expect(mockCronScheduler.stop).not.toHaveBeenCalled();
-      expect(mockLogger.info).toHaveBeenCalledWith('PostgreSQL S3 Backup Service shutdown completed');
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'PostgreSQL S3 Backup Service shutdown completed'
+      );
     });
 
     it('should handle multiple shutdown calls', async () => {
@@ -238,10 +258,7 @@ describe('PostgreSQLBackupApplication', () => {
 
       await expect(app.shutdown()).rejects.toThrow('process.exit called');
       expect(mockExit).toHaveBeenCalledWith(4);
-      expect(mockLogger.error).toHaveBeenCalledWith(
-        'Error during shutdown',
-        expect.any(Error)
-      );
+      expect(mockLogger.error).toHaveBeenCalledWith('Error during shutdown', expect.any(Error));
 
       mockExit.mockRestore();
     });
@@ -284,25 +301,31 @@ describe('Integration Tests', () => {
     backupInterval: '0 2 * * *',
     s3Path: 'backups',
     retentionDays: 30,
-    logLevel: 'info'
+    logLevel: 'info',
   };
 
   beforeEach(() => {
     // Mock process methods
-    mockProcessStdinResume = jest.spyOn(process.stdin, 'resume').mockImplementation(() => process.stdin);
+    mockProcessStdinResume = jest
+      .spyOn(process.stdin, 'resume')
+      .mockImplementation(() => process.stdin);
     mockConsoleError = jest.spyOn(console, 'error').mockImplementation();
     mockProcessExit = jest.spyOn(process, 'exit').mockImplementation(() => {
       throw new Error('process.exit called');
     });
 
     // Setup default mock implementations
-    (ConfigurationManager as jest.Mocked<typeof ConfigurationManager>).loadConfiguration.mockReturnValue(mockConfig);
-    (ConfigurationManager as jest.Mocked<typeof ConfigurationManager>).sanitizeForLogging.mockReturnValue({
+    (
+      ConfigurationManager as jest.Mocked<typeof ConfigurationManager>
+    ).loadConfiguration.mockReturnValue(mockConfig);
+    (
+      ConfigurationManager as jest.Mocked<typeof ConfigurationManager>
+    ).sanitizeForLogging.mockReturnValue({
       s3Bucket: 'test-bucket',
       s3Path: 'backups',
-      backupInterval: '0 2 * * *'
+      backupInterval: '0 2 * * *',
     });
-    
+
     // Mock BackupManager prototype method
     BackupManager.prototype.validateConfiguration = jest.fn().mockResolvedValue(true);
   });
@@ -315,7 +338,7 @@ describe('Integration Tests', () => {
 
   it('should handle main function execution with mocked dependencies', async () => {
     const { main } = require('../src/index');
-    
+
     await main();
 
     expect(mockProcessStdinResume).toHaveBeenCalled();
@@ -324,17 +347,19 @@ describe('Integration Tests', () => {
   it('should test complete application startup flow', async () => {
     // Test that the application can be created and initialized without errors
     const app = new PostgreSQLBackupApplication();
-    
+
     // Should not throw during construction
     expect(app).toBeInstanceOf(PostgreSQLBackupApplication);
-    
+
     // Setup signal handlers should not throw
     expect(() => app.setupSignalHandlers()).not.toThrow();
   });
 
   it('should handle errors during main function execution', async () => {
     // Mock configuration to fail
-    (ConfigurationManager as jest.Mocked<typeof ConfigurationManager>).loadConfiguration.mockImplementation(() => {
+    (
+      ConfigurationManager as jest.Mocked<typeof ConfigurationManager>
+    ).loadConfiguration.mockImplementation(() => {
       throw new ConfigurationError('Missing required environment variable: S3_BUCKET');
     });
 
@@ -346,7 +371,7 @@ describe('Integration Tests', () => {
 
   it('should export main function and PostgreSQLBackupApplication class', () => {
     const { main, PostgreSQLBackupApplication } = require('../src/index');
-    
+
     expect(typeof main).toBe('function');
     expect(typeof PostgreSQLBackupApplication).toBe('function');
   });

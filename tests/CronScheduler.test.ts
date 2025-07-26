@@ -1,11 +1,16 @@
-import { CronScheduler, CronSchedulerError, CronValidationError, CronExecutionError } from '../src/clients/CronScheduler';
+import {
+  CronScheduler,
+  CronSchedulerError,
+  CronValidationError,
+  CronExecutionError,
+} from '../src/clients/CronScheduler';
 import { CronSchedulerConfig } from '../src/interfaces/CronScheduler';
 import { BackupManager, BackupResult } from '../src/interfaces/BackupManager';
 
 // Mock node-cron
 jest.mock('node-cron', () => ({
   schedule: jest.fn(),
-  validate: jest.fn()
+  validate: jest.fn(),
 }));
 
 import * as cron from 'node-cron';
@@ -24,20 +29,20 @@ describe('CronScheduler', () => {
     // Mock BackupManager
     mockBackupManager = {
       executeBackup: jest.fn(),
-      validateConfiguration: jest.fn()
+      validateConfiguration: jest.fn(),
     };
 
     // Mock Logger
     mockLogger = {
       log: jest.fn(),
       warn: jest.fn(),
-      error: jest.fn()
+      error: jest.fn(),
     } as any;
 
     // Mock scheduled task
     mockTask = {
       start: jest.fn(),
-      stop: jest.fn()
+      stop: jest.fn(),
     };
 
     // Mock cron.schedule to return our mock task
@@ -47,7 +52,7 @@ describe('CronScheduler', () => {
     // Default config
     config = {
       cronExpression: '0 2 * * *', // Daily at 2 AM
-      timezone: 'UTC'
+      timezone: 'UTC',
     };
 
     scheduler = new CronScheduler(config, mockBackupManager, mockLogger);
@@ -63,10 +68,10 @@ describe('CronScheduler', () => {
   describe('validateCronExpression', () => {
     it('should validate correct cron expressions', () => {
       const validExpressions = [
-        '0 2 * * *',     // Daily at 2 AM
-        '*/15 * * * *',  // Every 15 minutes
-        '0 0 1 * *',     // First day of every month
-        '0 9-17 * * 1-5' // Business hours on weekdays
+        '0 2 * * *', // Daily at 2 AM
+        '*/15 * * * *', // Every 15 minutes
+        '0 0 1 * *', // First day of every month
+        '0 9-17 * * 1-5', // Business hours on weekdays
       ];
 
       validExpressions.forEach(expr => {
@@ -79,10 +84,10 @@ describe('CronScheduler', () => {
     it('should reject invalid cron expressions', () => {
       const invalidExpressions = [
         'invalid',
-        '60 * * * *',    // Invalid minute
-        '* 25 * * *',    // Invalid hour
-        '* * 32 * *',    // Invalid day
-        '* * * 13 *'     // Invalid month
+        '60 * * * *', // Invalid minute
+        '* 25 * * *', // Invalid hour
+        '* * 32 * *', // Invalid day
+        '* * * 13 *', // Invalid month
       ];
 
       invalidExpressions.forEach(expr => {
@@ -110,14 +115,10 @@ describe('CronScheduler', () => {
       scheduler.start();
 
       expect(cron.validate).toHaveBeenCalledWith(config.cronExpression);
-      expect(cron.schedule).toHaveBeenCalledWith(
-        config.cronExpression,
-        expect.any(Function),
-        {
-          scheduled: false,
-          timezone: 'UTC'
-        }
-      );
+      expect(cron.schedule).toHaveBeenCalledWith(config.cronExpression, expect.any(Function), {
+        scheduled: false,
+        timezone: 'UTC',
+      });
       expect(mockTask.start).toHaveBeenCalled();
       expect(mockLogger.log).toHaveBeenCalledWith(
         `Starting cron scheduler with expression: ${config.cronExpression}`
@@ -140,16 +141,20 @@ describe('CronScheduler', () => {
       expect(cron.schedule).toHaveBeenCalledTimes(1); // Should only be called once
     });
 
-    it('should run initial backup if runOnInit is true', (done) => {
+    it('should run initial backup if runOnInit is true', done => {
       const configWithRunOnInit = { ...config, runOnInit: true };
-      const schedulerWithRunOnInit = new CronScheduler(configWithRunOnInit, mockBackupManager, mockLogger);
+      const schedulerWithRunOnInit = new CronScheduler(
+        configWithRunOnInit,
+        mockBackupManager,
+        mockLogger
+      );
 
       const mockResult: BackupResult = {
         success: true,
         fileName: 'test-backup.sql.gz',
         fileSize: 1024,
         s3Location: 's3://bucket/test-backup.sql.gz',
-        duration: 5000
+        duration: 5000,
       };
 
       mockBackupManager.executeBackup.mockResolvedValue(mockResult);
@@ -158,14 +163,20 @@ describe('CronScheduler', () => {
 
       // Use setImmediate to wait for the async initial backup
       setImmediate(() => {
-        expect(mockLogger.log).toHaveBeenCalledWith('Running initial backup due to runOnInit configuration');
+        expect(mockLogger.log).toHaveBeenCalledWith(
+          'Running initial backup due to runOnInit configuration'
+        );
         done();
       });
     });
 
-    it('should handle initial backup failure gracefully', (done) => {
+    it('should handle initial backup failure gracefully', done => {
       const configWithRunOnInit = { ...config, runOnInit: true };
-      const schedulerWithRunOnInit = new CronScheduler(configWithRunOnInit, mockBackupManager, mockLogger);
+      const schedulerWithRunOnInit = new CronScheduler(
+        configWithRunOnInit,
+        mockBackupManager,
+        mockLogger
+      );
 
       mockBackupManager.executeBackup.mockRejectedValue(new Error('Initial backup failed'));
 
@@ -216,22 +227,20 @@ describe('CronScheduler', () => {
       scheduler.stop();
       expect(scheduler.isRunning()).toBe(false);
     });
-
-
   });
 
   describe('getNextScheduledTime', () => {
     it('should return null for invalid cron expression', () => {
       (cron.validate as jest.Mock).mockReturnValue(false);
-      
+
       const result = scheduler.getNextScheduledTime();
-      
+
       expect(result).toBeNull();
     });
 
     it('should return null and log warning for valid expression (node-cron limitation)', () => {
       const result = scheduler.getNextScheduledTime();
-      
+
       expect(result).toBeNull();
       expect(mockLogger.warn).toHaveBeenCalledWith(
         'getNextScheduledTime: node-cron does not expose next execution time'
@@ -254,7 +263,7 @@ describe('CronScheduler', () => {
         fileName: 'postgres-backup-2023-10-01_02-00-00.sql.gz',
         fileSize: 2048576,
         s3Location: 's3://my-bucket/backups/postgres-backup-2023-10-01_02-00-00.sql.gz',
-        duration: 15000
+        duration: 15000,
       };
 
       mockBackupManager.executeBackup.mockResolvedValue(mockResult);
@@ -280,7 +289,7 @@ describe('CronScheduler', () => {
         fileSize: 0,
         s3Location: '',
         duration: 5000,
-        error: 'Database connection failed'
+        error: 'Database connection failed',
       };
 
       mockBackupManager.executeBackup.mockResolvedValue(mockResult);
@@ -298,7 +307,7 @@ describe('CronScheduler', () => {
     it('should handle backup execution exception', async () => {
       const error = new Error('Unexpected backup error');
       error.stack = 'Error stack trace';
-      
+
       mockBackupManager.executeBackup.mockRejectedValue(error);
 
       await scheduledCallback();
@@ -315,10 +324,10 @@ describe('CronScheduler', () => {
     it('should prevent overlapping backup executions', async () => {
       // Mock a long-running backup
       let resolveBackup: (result: BackupResult) => void;
-      const backupPromise = new Promise<BackupResult>((resolve) => {
+      const backupPromise = new Promise<BackupResult>(resolve => {
         resolveBackup = resolve;
       });
-      
+
       mockBackupManager.executeBackup.mockReturnValue(backupPromise);
 
       // Start first backup
@@ -337,7 +346,7 @@ describe('CronScheduler', () => {
         fileName: 'test.sql.gz',
         fileSize: 1024,
         s3Location: 's3://bucket/test.sql.gz',
-        duration: 1000
+        duration: 1000,
       });
 
       await firstBackup;
@@ -348,7 +357,7 @@ describe('CronScheduler', () => {
 
     it('should handle error without stack trace', async () => {
       const error = 'String error without stack';
-      
+
       mockBackupManager.executeBackup.mockRejectedValue(error);
 
       await scheduledCallback();
@@ -410,7 +419,9 @@ describe('CronScheduler', () => {
       it('should handle backup execution timeout', async () => {
         // Mock a backup that never resolves
         const neverResolvingPromise = new Promise(() => {});
-        mockBackupManager.executeBackup.mockReturnValue(neverResolvingPromise as Promise<BackupResult>);
+        mockBackupManager.executeBackup.mockReturnValue(
+          neverResolvingPromise as Promise<BackupResult>
+        );
 
         const executionPromise = scheduledCallback();
 
@@ -430,7 +441,7 @@ describe('CronScheduler', () => {
           fileName: 'test.sql.gz',
           fileSize: 1024,
           s3Location: 's3://bucket/test.sql.gz',
-          duration: 1000
+          duration: 1000,
         };
 
         mockBackupManager.executeBackup.mockResolvedValue(mockResult);
@@ -439,8 +450,9 @@ describe('CronScheduler', () => {
         await scheduledCallback();
 
         const logCalls = mockLogger.log.mock.calls;
-        const executionIdCalls = logCalls.filter(call => 
-          call[0] && call[0].includes('[cron-') && call[0].includes('Starting scheduled backup')
+        const executionIdCalls = logCalls.filter(
+          call =>
+            call[0] && call[0].includes('[cron-') && call[0].includes('Starting scheduled backup')
         );
 
         expect(executionIdCalls.length).toBe(2);
@@ -464,7 +476,7 @@ describe('CronScheduler', () => {
           expect.stringContaining('Execution context:'),
           expect.objectContaining({
             cronExpression: '0 2 * * *',
-            timezone: 'UTC'
+            timezone: 'UTC',
           })
         );
       });
@@ -475,8 +487,9 @@ describe('CronScheduler', () => {
           throw new Error('Unexpected wrapper error');
         });
 
-        (cron.schedule as jest.Mock).mockImplementation((_expr, _callback, _options) => {
+        (cron.schedule as jest.Mock).mockImplementation((_expr, _callback) => {
           // Replace the callback with our wrapper that throws
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
           _callback = callbackWrapper;
           return mockTask;
         });
@@ -498,16 +511,14 @@ describe('CronScheduler', () => {
           { error: 'String error', expected: 'String error' },
           { error: { message: 'Object error' }, expected: '[object Object]' },
           { error: null, expected: 'null' },
-          { error: undefined, expected: 'undefined' }
+          { error: undefined, expected: 'undefined' },
         ];
 
         for (const testCase of testCases) {
           mockBackupManager.executeBackup.mockRejectedValue(testCase.error);
           await scheduledCallback();
 
-          expect(mockLogger.error).toHaveBeenCalledWith(
-            expect.stringContaining(testCase.expected)
-          );
+          expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining(testCase.expected));
 
           jest.clearAllMocks();
         }
@@ -520,7 +531,7 @@ describe('CronScheduler', () => {
           fileName: 'quick-backup.sql.gz',
           fileSize: 1024,
           s3Location: 's3://bucket/quick-backup.sql.gz',
-          duration: 100
+          duration: 100,
         };
 
         mockBackupManager.executeBackup.mockResolvedValue(quickResult);
@@ -530,9 +541,7 @@ describe('CronScheduler', () => {
         expect(mockLogger.log).toHaveBeenCalledWith(
           expect.stringContaining('Scheduled backup completed successfully')
         );
-        expect(mockLogger.log).not.toHaveBeenCalledWith(
-          expect.stringContaining('timed out')
-        );
+        expect(mockLogger.log).not.toHaveBeenCalledWith(expect.stringContaining('timed out'));
       });
     });
 
@@ -551,14 +560,12 @@ describe('CronScheduler', () => {
           fileName: 'recovery-backup.sql.gz',
           fileSize: 1024,
           s3Location: 's3://bucket/recovery-backup.sql.gz',
-          duration: 1000
+          duration: 1000,
         };
         mockBackupManager.executeBackup.mockResolvedValueOnce(successResult);
         await scheduledCallback();
 
-        expect(mockLogger.error).toHaveBeenCalledWith(
-          expect.stringContaining('First failure')
-        );
+        expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining('First failure'));
         expect(mockLogger.log).toHaveBeenCalledWith(
           expect.stringContaining('Scheduled backup completed successfully')
         );
@@ -578,7 +585,7 @@ describe('CronScheduler', () => {
           fileName: 'test.sql.gz',
           fileSize: 1024,
           s3Location: 's3://bucket/test.sql.gz',
-          duration: 1000
+          duration: 1000,
         });
         await scheduledCallback();
 
@@ -625,7 +632,7 @@ describe('CronScheduler', () => {
     it('should use custom timezone when provided', () => {
       const customConfig = {
         ...config,
-        timezone: 'America/New_York'
+        timezone: 'America/New_York',
       };
 
       const customScheduler = new CronScheduler(customConfig, mockBackupManager, mockLogger);
@@ -636,17 +643,21 @@ describe('CronScheduler', () => {
         expect.any(Function),
         {
           scheduled: false,
-          timezone: 'America/New_York'
+          timezone: 'America/New_York',
         }
       );
     });
 
     it('should default to UTC when timezone not provided', () => {
       const configWithoutTimezone = {
-        cronExpression: '0 2 * * *'
+        cronExpression: '0 2 * * *',
       };
 
-      const schedulerWithoutTimezone = new CronScheduler(configWithoutTimezone, mockBackupManager, mockLogger);
+      const schedulerWithoutTimezone = new CronScheduler(
+        configWithoutTimezone,
+        mockBackupManager,
+        mockLogger
+      );
       schedulerWithoutTimezone.start();
 
       expect(cron.schedule).toHaveBeenCalledWith(
@@ -654,7 +665,7 @@ describe('CronScheduler', () => {
         expect.any(Function),
         {
           scheduled: false,
-          timezone: 'UTC'
+          timezone: 'UTC',
         }
       );
     });

@@ -11,7 +11,11 @@ import { BackupConfig } from '../interfaces/BackupConfig';
  * Custom error classes for better error handling and categorization
  */
 export class BackupError extends Error {
-  constructor(message: string, public readonly operation: string, public readonly cause?: Error) {
+  constructor(
+    message: string,
+    public readonly operation: string,
+    public readonly cause?: Error
+  ) {
     super(message);
     this.name = 'BackupError';
     if (cause) {
@@ -21,14 +25,22 @@ export class BackupError extends Error {
 }
 
 export class ValidationError extends Error {
-  constructor(message: string, public readonly field?: string) {
+  constructor(
+    message: string,
+    public readonly field?: string
+  ) {
     super(message);
     this.name = 'ValidationError';
   }
 }
 
 export class RetryableError extends Error {
-  constructor(message: string, public readonly operation: string, public readonly attempt: number, public readonly maxAttempts: number) {
+  constructor(
+    message: string,
+    public readonly operation: string,
+    public readonly attempt: number,
+    public readonly maxAttempts: number
+  ) {
     super(message);
     this.name = 'RetryableError';
   }
@@ -64,19 +76,19 @@ export class BackupManager implements IBackupManager {
     const startTime = Date.now();
     let tempFilePath: string | null = null;
     const operationId = this.generateOperationId();
-    
+
     try {
       console.log(`[${operationId}] Starting backup operation...`);
-      
+
       // Generate backup filename with timestamp
       const fileName = this.generateBackupFileName();
       const s3Key = this.buildS3Key(fileName);
-      
+
       // Create temporary file path
       tempFilePath = join(tmpdir(), fileName);
-      
+
       console.log(`[${operationId}] Creating backup: ${fileName}`);
-      
+
       // Step 1: Create PostgreSQL backup with retry logic
       const backupInfo = await this.withRetry(
         () => this.postgresClient.createBackup(tempFilePath!),
@@ -85,61 +97,69 @@ export class BackupManager implements IBackupManager {
         2, // Max 2 retries for database operations
         [5000, 10000] // 5s, 10s delays
       );
-      
+
       console.log(`[${operationId}] Backup created successfully: ${backupInfo.fileSize} bytes`);
-      
+
       // Step 2: Upload to S3 with retry logic (S3Client already has its own retry logic)
       console.log(`[${operationId}] Uploading backup to S3: ${s3Key}`);
       const s3Location = await this.s3Client.uploadFile(tempFilePath, s3Key);
-      
+
       console.log(`[${operationId}] Backup uploaded successfully to: ${s3Location}`);
-      
+
       // Step 3: Clean up retention (run in background, don't fail backup on retention errors)
       this.performRetentionCleanup(operationId).catch(error => {
-        console.warn(`[${operationId}] Retention cleanup failed (backup still successful):`, this.formatError(error));
+        console.warn(
+          `[${operationId}] Retention cleanup failed (backup still successful):`,
+          this.formatError(error)
+        );
       });
-      
+
       // Step 4: Clean up temporary file
       await this.cleanupTempFile(tempFilePath, operationId);
       tempFilePath = null; // Mark as cleaned up
-      
+
       const duration = Date.now() - startTime;
-      
+
       console.log(`[${operationId}] Backup operation completed successfully in ${duration}ms`);
-      
+
       return {
         success: true,
         fileName,
         fileSize: backupInfo.fileSize,
         s3Location,
-        duration
+        duration,
       };
-      
     } catch (error) {
       const duration = Date.now() - startTime;
       const formattedError = this.formatError(error);
-      
-      console.error(`[${operationId}] Backup operation failed after ${duration}ms:`, formattedError);
-      
+
+      console.error(
+        `[${operationId}] Backup operation failed after ${duration}ms:`,
+        formattedError
+      );
+
       // Log stack trace for debugging
       if (error instanceof Error && error.stack) {
         console.error(`[${operationId}] Stack trace:`, error.stack);
       }
-      
+
       // Clean up temporary file if it exists
       if (tempFilePath) {
         await this.cleanupTempFile(tempFilePath, operationId).catch(cleanupError => {
-          console.warn(`[${operationId}] Failed to cleanup temporary file:`, this.formatError(cleanupError));
+          console.warn(
+            `[${operationId}] Failed to cleanup temporary file:`,
+            this.formatError(cleanupError)
+          );
         });
       }
-      
+
       return {
         success: false,
         fileName: '',
         fileSize: 0,
         s3Location: '',
         duration,
-        error: formattedError
+        error: formattedError,
       };
     }
   }
@@ -151,7 +171,7 @@ export class BackupManager implements IBackupManager {
   async validateConfiguration(): Promise<boolean> {
     try {
       console.log('Validating configuration...');
-      
+
       // Test PostgreSQL connection
       console.log('Testing PostgreSQL connection...');
       const pgConnected = await this.postgresClient.testConnection();
@@ -160,7 +180,7 @@ export class BackupManager implements IBackupManager {
         return false;
       }
       console.log('PostgreSQL connection test passed');
-      
+
       // Test S3 connection
       console.log('Testing S3 connection...');
       const s3Connected = await this.s3Client.testConnection();
@@ -169,19 +189,21 @@ export class BackupManager implements IBackupManager {
         return false;
       }
       console.log('S3 connection test passed');
-      
+
       // Validate backup interval (cron format)
       if (!this.isValidCronExpression(this.config.backupInterval)) {
         console.error('Invalid backup interval (cron format):', this.config.backupInterval);
         return false;
       }
       console.log('Backup interval validation passed');
-      
+
       console.log('Configuration validation completed successfully');
       return true;
-      
     } catch (error) {
-      console.error('Configuration validation failed:', error instanceof Error ? error.message : 'Unknown error');
+      console.error(
+        'Configuration validation failed:',
+        error instanceof Error ? error.message : 'Unknown error'
+      );
       return false;
     }
   }
@@ -205,7 +227,7 @@ export class BackupManager implements IBackupManager {
     const hours = String(date.getHours()).padStart(2, '0');
     const minutes = String(date.getMinutes()).padStart(2, '0');
     const seconds = String(date.getSeconds()).padStart(2, '0');
-    
+
     return `${year}-${month}-${day}_${hours}-${minutes}-${seconds}`;
   }
 
@@ -214,16 +236,16 @@ export class BackupManager implements IBackupManager {
    */
   private buildS3Key(fileName: string): string {
     const s3Path = this.config.s3Path || '';
-    
+
     // Ensure path doesn't start with / and ends with / if not empty
     const normalizedPath = s3Path
       .replace(/^\/+/, '') // Remove leading slashes
       .replace(/\/+$/, ''); // Remove trailing slashes
-    
+
     if (normalizedPath) {
       return `${normalizedPath}/${fileName}`;
     }
-    
+
     return fileName;
   }
 
@@ -234,16 +256,25 @@ export class BackupManager implements IBackupManager {
     try {
       const prefix = this.config.s3Path || '';
       const result = await this.retentionManager.cleanupExpiredBackups(prefix);
-      
+
       if (result.deletedCount > 0) {
-        console.log(`[${operationId}] Retention cleanup completed: ${result.deletedCount} expired backups deleted`);
+        console.log(
+          `[${operationId}] Retention cleanup completed: ${result.deletedCount} expired backups deleted`
+        );
       }
-      
+
       if (result.errors.length > 0) {
-        console.warn(`[${operationId}] Retention cleanup had ${result.errors.length} errors:`, result.errors);
+        console.warn(
+          `[${operationId}] Retention cleanup had ${result.errors.length} errors:`,
+          result.errors
+        );
       }
     } catch (error) {
-      throw new BackupError(`Retention cleanup failed: ${this.formatError(error)}`, 'retention_cleanup', error instanceof Error ? error : undefined);
+      throw new BackupError(
+        `Retention cleanup failed: ${this.formatError(error)}`,
+        'retention_cleanup',
+        error instanceof Error ? error : undefined
+      );
     }
   }
 
@@ -257,7 +288,11 @@ export class BackupManager implements IBackupManager {
     } catch (error) {
       // Only log if file actually exists (ignore ENOENT errors)
       if ((error as any).code !== 'ENOENT') {
-        throw new BackupError(`Failed to cleanup temporary file ${filePath}: ${this.formatError(error)}`, 'temp_file_cleanup', error instanceof Error ? error : undefined);
+        throw new BackupError(
+          `Failed to cleanup temporary file ${filePath}: ${this.formatError(error)}`,
+          'temp_file_cleanup',
+          error instanceof Error ? error : undefined
+        );
       }
     }
   }
@@ -279,10 +314,13 @@ export class BackupManager implements IBackupManager {
         return await operation();
       } catch (error) {
         lastError = error as Error;
-        
+
         // Don't retry on certain error types
         if (this.isNonRetryableError(error)) {
-          console.error(`[${operationId}] Non-retryable error in ${operationName}:`, this.formatError(error));
+          console.error(
+            `[${operationId}] Non-retryable error in ${operationName}:`,
+            this.formatError(error)
+          );
           throw error;
         }
 
@@ -302,7 +340,7 @@ export class BackupManager implements IBackupManager {
         console.warn(
           `[${operationId}] Attempt ${attempt} failed for ${operationName}: ${this.formatError(lastError)}. Retrying in ${delay}ms...`
         );
-        
+
         await this.sleep(delay);
       }
     }
@@ -320,9 +358,11 @@ export class BackupManager implements IBackupManager {
     }
 
     // Don't retry on specific PostgreSQL errors
-    if (error.message?.includes('authentication failed') ||
-        error.message?.includes('database does not exist') ||
-        error.message?.includes('permission denied')) {
+    if (
+      error.message?.includes('authentication failed') ||
+      error.message?.includes('database does not exist') ||
+      error.message?.includes('permission denied')
+    ) {
       return true;
     }
 
@@ -367,15 +407,15 @@ export class BackupManager implements IBackupManager {
   private isValidCronExpression(expression: string): boolean {
     try {
       const parts = expression.trim().split(/\s+/);
-      
+
       // Standard cron has 5 parts: minute hour day month day-of-week
       if (parts.length !== 5) {
         return false;
       }
-      
+
       // Basic validation for each part
       const [minute, hour, day, month, dayOfWeek] = parts;
-      
+
       return (
         this.isValidCronField(minute, 0, 59) &&
         this.isValidCronField(hour, 0, 23) &&
@@ -396,7 +436,7 @@ export class BackupManager implements IBackupManager {
     if (field === '*') {
       return true;
     }
-    
+
     // Allow step values (e.g., */5, 0-23/2) - handle this before ranges
     if (field.includes('/')) {
       const [range, step] = field.split('/');
@@ -404,15 +444,15 @@ export class BackupManager implements IBackupManager {
       if (isNaN(stepNum) || stepNum <= 0) {
         return false;
       }
-      
+
       if (range === '*') {
         return true;
       }
-      
+
       // Validate the range part recursively (without the step)
       return this.isValidCronField(range, min, max);
     }
-    
+
     // Allow ranges (e.g., 1-5)
     if (field.includes('-')) {
       const parts = field.split('-');
@@ -422,13 +462,13 @@ export class BackupManager implements IBackupManager {
       const [start, end] = parts.map(Number);
       return !isNaN(start) && !isNaN(end) && start >= min && end <= max && start <= end;
     }
-    
+
     // Allow lists (e.g., 1,3,5)
     if (field.includes(',')) {
       const values = field.split(',').map(Number);
       return values.every(val => !isNaN(val) && val >= min && val <= max);
     }
-    
+
     // Allow single numeric values
     const num = Number(field);
     return !isNaN(num) && num >= min && num <= max;

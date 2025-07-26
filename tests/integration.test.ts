@@ -38,14 +38,14 @@ describe('Integration Tests', () => {
   beforeAll(async () => {
     // Save original environment
     originalEnv = { ...process.env };
-    
+
     // Create temporary directory for test files
     testTempDir = await fs.mkdtemp(join(tmpdir(), 'postgres-backup-test-'));
-    
+
     // Setup AWS SDK mocks
     const { S3Client } = require('@aws-sdk/client-s3');
     new S3Client(); // Initialize for mocking
-    
+
     // Setup child_process mocks
     mockSpawn = spawn as jest.MockedFunction<typeof spawn>;
   });
@@ -53,7 +53,7 @@ describe('Integration Tests', () => {
   afterAll(async () => {
     // Restore original environment
     process.env = originalEnv;
-    
+
     // Cleanup test directory
     try {
       await fs.rm(testTempDir, { recursive: true });
@@ -65,10 +65,10 @@ describe('Integration Tests', () => {
   beforeEach(() => {
     // Reset all mocks
     jest.clearAllMocks();
-    
+
     // Reset environment to clean state
     process.env = { ...originalEnv };
-    
+
     // Clear backup-related env vars
     delete process.env.S3_BUCKET;
     delete process.env.S3_ACCESS_KEY;
@@ -102,7 +102,7 @@ describe('Integration Tests', () => {
         BACKUP_INTERVAL: '0 2 * * *',
         S3_PATH: 'integration-test-backups',
         BACKUP_RETENTION_DAYS: '7',
-        LOG_LEVEL: 'info'
+        LOG_LEVEL: 'info',
       };
 
       Object.assign(process.env, validConfig);
@@ -113,7 +113,9 @@ describe('Integration Tests', () => {
       // Assert
       expect(config.s3Bucket).toBe('test-bucket');
       expect(config.s3AccessKey).toBe('AKIAIOSFODNN7EXAMPLE');
-      expect(config.postgresConnectionString).toBe('postgresql://testuser:testpass@localhost:5432/testdb');
+      expect(config.postgresConnectionString).toBe(
+        'postgresql://testuser:testpass@localhost:5432/testdb'
+      );
       expect(config.backupInterval).toBe('0 2 * * *');
       expect(config.s3Path).toBe('integration-test-backups');
       expect(config.retentionDays).toBe(7);
@@ -122,12 +124,13 @@ describe('Integration Tests', () => {
 
     it('should handle missing required configuration', () => {
       // Arrange - Missing required variables
-      
+
       // Act & Assert
-      expect(() => ConfigurationManager.loadConfiguration())
-        .toThrow(expect.objectContaining({
-          message: expect.stringContaining('Missing required environment variables')
-        }));
+      expect(() => ConfigurationManager.loadConfiguration()).toThrow(
+        expect.objectContaining({
+          message: expect.stringContaining('Missing required environment variables'),
+        })
+      );
     });
 
     it('should validate cron expression format', () => {
@@ -137,17 +140,18 @@ describe('Integration Tests', () => {
         S3_ACCESS_KEY: 'AKIAIOSFODNN7EXAMPLE',
         S3_SECRET_KEY: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
         POSTGRES_CONNECTION_STRING: 'postgresql://testuser:testpass@localhost:5432/testdb',
-        BACKUP_INTERVAL: 'not-a-cron-expression'
+        BACKUP_INTERVAL: 'not-a-cron-expression',
       };
 
       Object.assign(process.env, configWithInvalidCron);
 
       // Act & Assert
-      expect(() => ConfigurationManager.loadConfiguration())
-        .toThrow(expect.objectContaining({
+      expect(() => ConfigurationManager.loadConfiguration()).toThrow(
+        expect.objectContaining({
           message: expect.stringContaining('Invalid cron expression'),
-          field: 'BACKUP_INTERVAL'
-        }));
+          field: 'BACKUP_INTERVAL',
+        })
+      );
     });
 
     it('should sanitize sensitive information in configuration logging', () => {
@@ -157,7 +161,7 @@ describe('Integration Tests', () => {
         S3_ACCESS_KEY: 'AKIAIOSFODNN7EXAMPLE',
         S3_SECRET_KEY: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
         POSTGRES_CONNECTION_STRING: 'postgresql://testuser:secretpassword@localhost:5432/testdb',
-        BACKUP_INTERVAL: '0 2 * * *'
+        BACKUP_INTERVAL: '0 2 * * *',
       };
 
       Object.assign(process.env, configWithSensitiveData);
@@ -168,7 +172,9 @@ describe('Integration Tests', () => {
 
       // Assert
       expect(sanitized.s3AccessKey).toBe('AKIA***');
-      expect(sanitized.postgresConnectionString).toBe('postgresql://testuser:***@localhost:5432/testdb');
+      expect(sanitized.postgresConnectionString).toBe(
+        'postgresql://testuser:***@localhost:5432/testdb'
+      );
       expect(sanitized.s3Bucket).toBe('test-bucket'); // Non-sensitive data preserved
     });
   });
@@ -177,7 +183,7 @@ describe('Integration Tests', () => {
     it('should verify AWS SDK mocking is working', () => {
       // Arrange
       const { S3Client, PutObjectCommand, HeadBucketCommand } = require('@aws-sdk/client-s3');
-      
+
       // Act
       const s3Client = new S3Client();
       new PutObjectCommand({});
@@ -245,7 +251,7 @@ describe('Integration Tests', () => {
 
       // Assert
       expect(readContent).toBe(testContent);
-      
+
       // Verify file was deleted
       await expect(fs.access(testFile)).rejects.toThrow();
     });
@@ -268,14 +274,14 @@ describe('Integration Tests', () => {
         S3_ACCESS_KEY: 'base-key',
         S3_SECRET_KEY: 'base-secret',
         POSTGRES_CONNECTION_STRING: 'postgresql://base:base@localhost:5432/base',
-        BACKUP_INTERVAL: '0 1 * * *'
+        BACKUP_INTERVAL: '0 1 * * *',
       };
 
       const dockerOverrides = {
         S3_BUCKET: 'docker-override-bucket',
         S3_PATH: 'docker-override-path',
         BACKUP_RETENTION_DAYS: '7',
-        LOG_LEVEL: 'debug'
+        LOG_LEVEL: 'debug',
       };
 
       // Apply base config first, then Docker overrides
@@ -299,7 +305,7 @@ describe('Integration Tests', () => {
         S3_ACCESS_KEY: 'AKIAIOSFODNN7EXAMPLE',
         S3_SECRET_KEY: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
         POSTGRES_CONNECTION_STRING: 'postgresql://testuser:testpass@localhost:5432/testdb',
-        BACKUP_INTERVAL: '0 2 * * *'
+        BACKUP_INTERVAL: '0 2 * * *',
       };
 
       Object.assign(process.env, minimalConfig);
@@ -347,7 +353,7 @@ describe('Integration Tests', () => {
           S3_ACCESS_KEY: 'AKIAIOSFODNN7EXAMPLE',
           S3_SECRET_KEY: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
           POSTGRES_CONNECTION_STRING: 'postgresql://testuser:testpass@localhost:5432/testdb',
-          BACKUP_INTERVAL: expression
+          BACKUP_INTERVAL: expression,
         };
 
         Object.assign(process.env, testConfig);
@@ -367,16 +373,17 @@ describe('Integration Tests', () => {
           S3_ACCESS_KEY: 'AKIAIOSFODNN7EXAMPLE',
           S3_SECRET_KEY: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
           POSTGRES_CONNECTION_STRING: 'postgresql://testuser:testpass@localhost:5432/testdb',
-          BACKUP_INTERVAL: expression
+          BACKUP_INTERVAL: expression,
         };
 
         Object.assign(process.env, testConfig);
 
         // Act & Assert
-        expect(() => ConfigurationManager.loadConfiguration())
-          .toThrow(expect.objectContaining({
-            message: expect.stringContaining('Invalid cron expression')
-          }));
+        expect(() => ConfigurationManager.loadConfiguration()).toThrow(
+          expect.objectContaining({
+            message: expect.stringContaining('Invalid cron expression'),
+          })
+        );
       });
     });
   });
@@ -390,7 +397,7 @@ describe('Integration Tests', () => {
         S3_SECRET_KEY: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
         POSTGRES_CONNECTION_STRING: 'postgresql://testuser:testpass@localhost:5432/testdb',
         BACKUP_INTERVAL: '0 2 * * *',
-        BACKUP_RETENTION_DAYS: '30'
+        BACKUP_RETENTION_DAYS: '30',
       };
 
       Object.assign(process.env, testConfig);
@@ -413,17 +420,18 @@ describe('Integration Tests', () => {
           S3_SECRET_KEY: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
           POSTGRES_CONNECTION_STRING: 'postgresql://testuser:testpass@localhost:5432/testdb',
           BACKUP_INTERVAL: '0 2 * * *',
-          BACKUP_RETENTION_DAYS: value
+          BACKUP_RETENTION_DAYS: value,
         };
 
         Object.assign(process.env, testConfig);
 
         // Act & Assert
-        expect(() => ConfigurationManager.loadConfiguration())
-          .toThrow(expect.objectContaining({
+        expect(() => ConfigurationManager.loadConfiguration()).toThrow(
+          expect.objectContaining({
             message: expect.stringContaining('Invalid BACKUP_RETENTION_DAYS'),
-            field: 'BACKUP_RETENTION_DAYS'
-          }));
+            field: 'BACKUP_RETENTION_DAYS',
+          })
+        );
       });
     });
   });
@@ -440,7 +448,7 @@ describe('Integration Tests', () => {
           S3_SECRET_KEY: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
           POSTGRES_CONNECTION_STRING: 'postgresql://testuser:testpass@localhost:5432/testdb',
           BACKUP_INTERVAL: '0 2 * * *',
-          LOG_LEVEL: level
+          LOG_LEVEL: level,
         };
 
         Object.assign(process.env, testConfig);
@@ -464,17 +472,18 @@ describe('Integration Tests', () => {
           S3_SECRET_KEY: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
           POSTGRES_CONNECTION_STRING: 'postgresql://testuser:testpass@localhost:5432/testdb',
           BACKUP_INTERVAL: '0 2 * * *',
-          LOG_LEVEL: level
+          LOG_LEVEL: level,
         };
 
         Object.assign(process.env, testConfig);
 
         // Act & Assert
-        expect(() => ConfigurationManager.loadConfiguration())
-          .toThrow(expect.objectContaining({
+        expect(() => ConfigurationManager.loadConfiguration()).toThrow(
+          expect.objectContaining({
             message: expect.stringContaining('Invalid LOG_LEVEL'),
-            field: 'LOG_LEVEL'
-          }));
+            field: 'LOG_LEVEL',
+          })
+        );
       });
     });
   });

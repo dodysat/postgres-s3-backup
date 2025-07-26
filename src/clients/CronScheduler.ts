@@ -6,7 +6,11 @@ import { BackupManager } from '../interfaces/BackupManager';
  * Custom error classes for cron scheduling operations
  */
 export class CronSchedulerError extends Error {
-  constructor(message: string, public readonly operation: string, public readonly cause?: Error) {
+  constructor(
+    message: string,
+    public readonly operation: string,
+    public readonly cause?: Error
+  ) {
     super(message);
     this.name = 'CronSchedulerError';
     if (cause) {
@@ -16,7 +20,10 @@ export class CronSchedulerError extends Error {
 }
 
 export class CronValidationError extends CronSchedulerError {
-  constructor(message: string, public readonly expression: string) {
+  constructor(
+    message: string,
+    public readonly expression: string
+  ) {
     super(message, 'validation');
     this.name = 'CronValidationError';
   }
@@ -62,10 +69,15 @@ export class CronScheduler implements ICronScheduler {
     try {
       // Validate cron expression before starting
       if (!this.validateCronExpression(this.config.cronExpression)) {
-        throw new CronValidationError(`Invalid cron expression: ${this.config.cronExpression}`, this.config.cronExpression);
+        throw new CronValidationError(
+          `Invalid cron expression: ${this.config.cronExpression}`,
+          this.config.cronExpression
+        );
       }
 
-      this.logger.log(`Starting cron scheduler with expression: ${this.config.cronExpression} (timezone: ${this.config.timezone || 'UTC'})`);
+      this.logger.log(
+        `Starting cron scheduler with expression: ${this.config.cronExpression} (timezone: ${this.config.timezone || 'UTC'})`
+      );
 
       // Create the scheduled task with error handling wrapper
       this.task = cron.schedule(
@@ -76,9 +88,12 @@ export class CronScheduler implements ICronScheduler {
           } catch (error) {
             // This should not happen as executeScheduledBackup handles its own errors,
             // but we add this as a safety net
-            const cronError = new CronExecutionError(`Unexpected error in scheduled backup execution: ${this.formatError(error)}`, error instanceof Error ? error : undefined);
+            const cronError = new CronExecutionError(
+              `Unexpected error in scheduled backup execution: ${this.formatError(error)}`,
+              error instanceof Error ? error : undefined
+            );
             this.logger.error(cronError.message);
-            
+
             if (error instanceof Error && error.stack) {
               this.logger.error('Unexpected error stack trace:', error.stack);
             }
@@ -86,7 +101,7 @@ export class CronScheduler implements ICronScheduler {
         },
         {
           scheduled: false, // Don't start immediately
-          timezone: this.config.timezone || 'UTC'
+          timezone: this.config.timezone || 'UTC',
         }
       );
 
@@ -108,8 +123,12 @@ export class CronScheduler implements ICronScheduler {
       if (error instanceof CronValidationError) {
         throw error;
       }
-      
-      const startError = new CronSchedulerError(`Failed to start cron scheduler: ${this.formatError(error)}`, 'start', error instanceof Error ? error : undefined);
+
+      const startError = new CronSchedulerError(
+        `Failed to start cron scheduler: ${this.formatError(error)}`,
+        'start',
+        error instanceof Error ? error : undefined
+      );
       this.logger.error(startError.message);
       throw startError;
     }
@@ -144,7 +163,10 @@ export class CronScheduler implements ICronScheduler {
     try {
       return cron.validate(expression);
     } catch (error) {
-      this.logger.error('Cron expression validation error:', error instanceof Error ? error.message : 'Unknown error');
+      this.logger.error(
+        'Cron expression validation error:',
+        error instanceof Error ? error.message : 'Unknown error'
+      );
       return false;
     }
   }
@@ -183,7 +205,7 @@ export class CronScheduler implements ICronScheduler {
       // Execute the backup with timeout protection
       const result = await Promise.race([
         this.backupManager.executeBackup(),
-        this.createTimeoutPromise(60 * 60 * 1000) // 1 hour timeout
+        this.createTimeoutPromise(60 * 60 * 1000), // 1 hour timeout
       ]);
 
       const endTime = new Date();
@@ -192,7 +214,7 @@ export class CronScheduler implements ICronScheduler {
       if (result.success) {
         this.logger.log(
           `[${executionId}] Scheduled backup completed successfully in ${duration}ms. ` +
-          `File: ${result.fileName}, Size: ${result.fileSize} bytes, Location: ${result.s3Location}`
+            `File: ${result.fileName}, Size: ${result.fileSize} bytes, Location: ${result.s3Location}`
         );
       } else {
         this.logger.error(
@@ -202,11 +224,11 @@ export class CronScheduler implements ICronScheduler {
     } catch (error) {
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
-      
+
       this.logger.error(
         `[${executionId}] Scheduled backup execution failed after ${duration}ms: ${this.formatError(error)}`
       );
-      
+
       // Log stack trace for debugging
       if (error instanceof Error && error.stack) {
         this.logger.error(`[${executionId}] Stack trace:`, error.stack);
@@ -217,7 +239,7 @@ export class CronScheduler implements ICronScheduler {
         startTime: startTime.toISOString(),
         duration,
         cronExpression: this.config.cronExpression,
-        timezone: this.config.timezone || 'UTC'
+        timezone: this.config.timezone || 'UTC',
       });
     } finally {
       this.isBackupRunning = false;

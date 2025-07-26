@@ -1,4 +1,9 @@
-import { PostgreSQLClient, PostgreSQLError, ConnectionError, BackupCreationError } from '../src/clients/PostgreSQLClient';
+import {
+  PostgreSQLClient,
+  PostgreSQLError,
+  ConnectionError,
+  BackupCreationError,
+} from '../src/clients/PostgreSQLClient';
 import { Client } from 'pg';
 import { spawn } from 'child_process';
 import { promises as fs } from 'fs';
@@ -11,14 +16,14 @@ jest.mock('fs', () => ({
   promises: {
     mkdir: jest.fn(),
     stat: jest.fn(),
-    unlink: jest.fn()
-  }
+    unlink: jest.fn(),
+  },
 }));
 
 const mockClient = {
   connect: jest.fn(),
   query: jest.fn(),
-  end: jest.fn()
+  end: jest.fn(),
 };
 
 const mockSpawn = spawn as jest.MockedFunction<typeof spawn>;
@@ -121,7 +126,7 @@ describe('PostgreSQLClient', () => {
 
     it('should create backup successfully', async () => {
       const backupPromise = client.createBackup(outputPath);
-      
+
       // Simulate successful pg_dump
       setTimeout(() => {
         mockProcess.emit('close', 0);
@@ -133,23 +138,28 @@ describe('PostgreSQLClient', () => {
         filePath: outputPath,
         fileSize: 1024,
         databaseName: 'testdb',
-        timestamp: expect.any(Date)
+        timestamp: expect.any(Date),
       });
 
-      expect(mockSpawn).toHaveBeenCalledWith('pg_dump', [
-        connectionString,
-        '--no-password',
-        '--verbose',
-        '--clean',
-        '--no-acl',
-        '--no-owner',
-        '--format=custom',
-        '--compress=9',
-        '--file', outputPath
-      ], {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env }
-      });
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'pg_dump',
+        [
+          connectionString,
+          '--no-password',
+          '--verbose',
+          '--clean',
+          '--no-acl',
+          '--no-owner',
+          '--format=custom',
+          '--compress=9',
+          '--file',
+          outputPath,
+        ],
+        {
+          stdio: ['pipe', 'pipe', 'pipe'],
+          env: { ...process.env },
+        }
+      );
 
       expect(mockFs.mkdir).toHaveBeenCalledWith('/tmp', { recursive: true });
       expect(mockFs.stat).toHaveBeenCalledWith(outputPath);
@@ -157,9 +167,9 @@ describe('PostgreSQLClient', () => {
 
     it('should handle pg_dump failure', async () => {
       mockFs.unlink.mockResolvedValue(undefined);
-      
+
       const backupPromise = client.createBackup(outputPath);
-      
+
       // Simulate pg_dump failure
       setTimeout(() => {
         mockProcess.stderr.emit('data', 'Error message');
@@ -172,9 +182,9 @@ describe('PostgreSQLClient', () => {
 
     it('should handle spawn error', async () => {
       mockFs.unlink.mockResolvedValue(undefined);
-      
+
       const backupPromise = client.createBackup(outputPath);
-      
+
       // Simulate spawn error
       setTimeout(() => {
         mockProcess.emit('error', new Error('Spawn failed'));
@@ -186,27 +196,27 @@ describe('PostgreSQLClient', () => {
 
     it('should handle timeout', async () => {
       mockFs.unlink.mockResolvedValue(undefined);
-      
+
       // Mock setTimeout to immediately call the timeout callback
       const originalSetTimeout = global.setTimeout;
-      global.setTimeout = jest.fn().mockImplementation((callback) => {
+      global.setTimeout = jest.fn().mockImplementation(callback => {
         setImmediate(callback);
         return 123 as any;
       }) as any;
-      
+
       const backupPromise = client.createBackup(outputPath);
-      
+
       await expect(backupPromise).rejects.toThrow('pg_dump timeout after 30 minutes');
       expect(mockProcess.kill).toHaveBeenCalledWith('SIGTERM');
-      
+
       global.setTimeout = originalSetTimeout;
     });
 
     it('should create output directory if it does not exist', async () => {
       const outputPath = '/path/to/backup/file.sql';
-      
+
       const backupPromise = client.createBackup(outputPath);
-      
+
       // Simulate successful completion
       setImmediate(() => {
         mockProcess.emit('close', 0);
@@ -219,9 +229,9 @@ describe('PostgreSQLClient', () => {
 
     it('should handle directory creation for root path', async () => {
       const outputPath = 'backup.sql';
-      
+
       const backupPromise = client.createBackup(outputPath);
-      
+
       // Simulate successful completion
       setImmediate(() => {
         mockProcess.emit('close', 0);
@@ -235,9 +245,9 @@ describe('PostgreSQLClient', () => {
 
     it('should ignore cleanup errors when backup fails', async () => {
       mockFs.unlink.mockRejectedValue(new Error('Cleanup failed'));
-      
+
       const backupPromise = client.createBackup(outputPath);
-      
+
       // Simulate failure
       setImmediate(() => {
         mockProcess.emit('close', 1);
@@ -266,34 +276,40 @@ describe('PostgreSQLClient', () => {
         pgError.code = 'ECONNREFUSED';
         pgError.severity = 'FATAL';
         pgError.detail = 'Connection refused';
-        
+
         mockClient.connect.mockRejectedValue(pgError);
         mockClient.end.mockResolvedValue(undefined);
 
         const result = await client.testConnection();
 
         expect(result).toBe(false);
-        expect(console.error).toHaveBeenCalledWith('PostgreSQL connection test failed:', 'Error: Connection failed');
+        expect(console.error).toHaveBeenCalledWith(
+          'PostgreSQL connection test failed:',
+          'Error: Connection failed'
+        );
         expect(console.error).toHaveBeenCalledWith('Connection error details:', {
           name: 'Error',
           message: 'Connection failed',
           code: 'ECONNREFUSED',
           severity: 'FATAL',
-          detail: 'Connection refused'
+          detail: 'Connection refused',
         });
       });
 
       it('should handle cleanup errors during connection test', async () => {
         mockClient.connect.mockResolvedValue(undefined);
         mockClient.query.mockResolvedValue({ rows: [] });
-        
+
         const cleanupError = new Error('Cleanup failed');
         mockClient.end.mockRejectedValue(cleanupError);
 
         const result = await client.testConnection();
 
         expect(result).toBe(true);
-        expect(console.warn).toHaveBeenCalledWith('Failed to close database connection during cleanup:', 'Error: Cleanup failed');
+        expect(console.warn).toHaveBeenCalledWith(
+          'Failed to close database connection during cleanup:',
+          'Error: Cleanup failed'
+        );
       });
     });
 
@@ -319,7 +335,9 @@ describe('PostgreSQLClient', () => {
         const backupPromise = client.createBackup('/restricted/backup.sql');
 
         await expect(backupPromise).rejects.toThrow(BackupCreationError);
-        await expect(backupPromise).rejects.toThrow('Failed to create output directory /restricted');
+        await expect(backupPromise).rejects.toThrow(
+          'Failed to create output directory /restricted'
+        );
       });
 
       it('should throw BackupCreationError when backup file is not created', async () => {
@@ -327,7 +345,7 @@ describe('PostgreSQLClient', () => {
         mockFs.stat.mockRejectedValue(statError);
 
         const backupPromise = client.createBackup(outputPath);
-        
+
         setImmediate(() => {
           mockProcess.emit('close', 0);
         });
@@ -340,7 +358,7 @@ describe('PostgreSQLClient', () => {
         mockFs.stat.mockResolvedValue({ size: 0 } as any);
 
         const backupPromise = client.createBackup(outputPath);
-        
+
         setImmediate(() => {
           mockProcess.emit('close', 0);
         });
@@ -351,7 +369,7 @@ describe('PostgreSQLClient', () => {
 
       it('should analyze authentication errors', async () => {
         const backupPromise = client.createBackup(outputPath);
-        
+
         setImmediate(() => {
           mockProcess.stderr.emit('data', 'authentication failed for user');
           mockProcess.emit('close', 1);
@@ -362,18 +380,20 @@ describe('PostgreSQLClient', () => {
 
       it('should analyze database not found errors', async () => {
         const backupPromise = client.createBackup(outputPath);
-        
+
         setImmediate(() => {
           mockProcess.stderr.emit('data', 'database "nonexistent" does not exist');
           mockProcess.emit('close', 1);
         });
 
-        await expect(backupPromise).rejects.toThrow('pg_dump failed: database "testdb" does not exist');
+        await expect(backupPromise).rejects.toThrow(
+          'pg_dump failed: database "testdb" does not exist'
+        );
       });
 
       it('should analyze permission errors', async () => {
         const backupPromise = client.createBackup(outputPath);
-        
+
         setImmediate(() => {
           mockProcess.stderr.emit('data', 'permission denied for database');
           mockProcess.emit('close', 1);
@@ -384,18 +404,20 @@ describe('PostgreSQLClient', () => {
 
       it('should analyze connection errors', async () => {
         const backupPromise = client.createBackup(outputPath);
-        
+
         setImmediate(() => {
           mockProcess.stderr.emit('data', 'connection refused');
           mockProcess.emit('close', 1);
         });
 
-        await expect(backupPromise).rejects.toThrow('pg_dump failed: unable to connect to database server');
+        await expect(backupPromise).rejects.toThrow(
+          'pg_dump failed: unable to connect to database server'
+        );
       });
 
       it('should analyze disk space errors', async () => {
         const backupPromise = client.createBackup(outputPath);
-        
+
         setImmediate(() => {
           mockProcess.stderr.emit('data', 'no space left on device');
           mockProcess.emit('close', 1);
@@ -406,7 +428,7 @@ describe('PostgreSQLClient', () => {
 
       it('should analyze memory errors', async () => {
         const backupPromise = client.createBackup(outputPath);
-        
+
         setImmediate(() => {
           mockProcess.stderr.emit('data', 'out of memory');
           mockProcess.emit('close', 1);
@@ -417,9 +439,9 @@ describe('PostgreSQLClient', () => {
 
       it('should handle spawn ENOENT error', async () => {
         const spawnError = new Error('spawn pg_dump ENOENT');
-        
+
         const backupPromise = client.createBackup(outputPath);
-        
+
         setImmediate(() => {
           mockProcess.emit('error', spawnError);
         });
@@ -429,9 +451,9 @@ describe('PostgreSQLClient', () => {
 
       it('should handle spawn permission error', async () => {
         const spawnError = new Error('spawn EACCES');
-        
+
         const backupPromise = client.createBackup(outputPath);
-        
+
         setImmediate(() => {
           mockProcess.emit('error', spawnError);
         });
@@ -441,7 +463,7 @@ describe('PostgreSQLClient', () => {
 
       it('should log progress during backup', async () => {
         const backupPromise = client.createBackup(outputPath);
-        
+
         setImmediate(() => {
           mockProcess.stdout.emit('data', 'COPY table1 (id, name) FROM stdin;');
           mockProcess.stdout.emit('data', 'CREATE TABLE table2');
@@ -455,7 +477,7 @@ describe('PostgreSQLClient', () => {
 
       it('should log warnings without failing backup', async () => {
         const backupPromise = client.createBackup(outputPath);
-        
+
         setImmediate(() => {
           mockProcess.stderr.emit('data', 'WARNING: some warning message\n');
           mockProcess.stderr.emit('data', 'NOTICE: some notice message\n');
@@ -465,27 +487,35 @@ describe('PostgreSQLClient', () => {
         const result = await backupPromise;
 
         expect(result.fileSize).toBe(1024);
-        expect(console.warn).toHaveBeenCalledWith('pg_dump warning:', 'WARNING: some warning message');
-        expect(console.warn).toHaveBeenCalledWith('pg_dump warning:', 'NOTICE: some notice message');
+        expect(console.warn).toHaveBeenCalledWith(
+          'pg_dump warning:',
+          'WARNING: some warning message'
+        );
+        expect(console.warn).toHaveBeenCalledWith(
+          'pg_dump warning:',
+          'NOTICE: some notice message'
+        );
       });
 
       it('should handle timeout with graceful and force termination', async () => {
         mockFs.unlink.mockResolvedValue(undefined);
-        
+
         // Mock setTimeout to control timeout behavior
         const timeoutCallbacks: (() => void)[] = [];
         const originalSetTimeout = global.setTimeout;
         global.setTimeout = jest.fn().mockImplementation((callback, delay) => {
-          if (delay === 30 * 60 * 1000) { // Main timeout
+          if (delay === 30 * 60 * 1000) {
+            // Main timeout
             setImmediate(callback);
-          } else if (delay === 10000) { // Force kill timeout
+          } else if (delay === 10000) {
+            // Force kill timeout
             timeoutCallbacks.push(callback);
           }
           return 123 as any;
         }) as any;
-        
+
         const backupPromise = client.createBackup(outputPath);
-        
+
         // Simulate force kill timeout
         setImmediate(() => {
           timeoutCallbacks.forEach(cb => cb());
@@ -493,16 +523,18 @@ describe('PostgreSQLClient', () => {
 
         await expect(backupPromise).rejects.toThrow('pg_dump timeout after 30 minutes');
         expect(mockProcess.kill).toHaveBeenCalledWith('SIGTERM');
-        expect(console.warn).toHaveBeenCalledWith('pg_dump timeout reached, terminating process...');
-        
+        expect(console.warn).toHaveBeenCalledWith(
+          'pg_dump timeout reached, terminating process...'
+        );
+
         global.setTimeout = originalSetTimeout;
       });
 
       it('should cleanup partial backup file on failure', async () => {
         mockFs.unlink.mockResolvedValue(undefined);
-        
+
         const backupPromise = client.createBackup(outputPath);
-        
+
         setImmediate(() => {
           mockProcess.emit('close', 1);
         });
@@ -515,15 +547,18 @@ describe('PostgreSQLClient', () => {
       it('should handle cleanup failure gracefully', async () => {
         const cleanupError = new Error('Cleanup failed');
         mockFs.unlink.mockRejectedValue(cleanupError);
-        
+
         const backupPromise = client.createBackup(outputPath);
-        
+
         setImmediate(() => {
           mockProcess.emit('close', 1);
         });
 
         await expect(backupPromise).rejects.toThrow();
-        expect(console.warn).toHaveBeenCalledWith(`Failed to cleanup partial backup file ${outputPath}:`, 'Error: Cleanup failed');
+        expect(console.warn).toHaveBeenCalledWith(
+          `Failed to cleanup partial backup file ${outputPath}:`,
+          'Error: Cleanup failed'
+        );
       });
     });
 

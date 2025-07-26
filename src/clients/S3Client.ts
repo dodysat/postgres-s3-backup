@@ -124,10 +124,7 @@ export class S3Client implements IS3Client {
   /**
    * Execute an operation with exponential backoff retry logic
    */
-  private async withRetry<T>(
-    operation: () => Promise<T>,
-    operationName: string
-  ): Promise<T> {
+  private async withRetry<T>(operation: () => Promise<T>, operationName: string): Promise<T> {
     let lastError: Error;
 
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
@@ -135,7 +132,7 @@ export class S3Client implements IS3Client {
         return await operation();
       } catch (error) {
         lastError = error as Error;
-        
+
         // Don't retry on certain error types
         if (this.isNonRetryableError(error)) {
           throw error;
@@ -152,7 +149,7 @@ export class S3Client implements IS3Client {
         console.warn(
           `Attempt ${attempt} failed for ${operationName}: ${lastError.message}. Retrying in ${delay}ms...`
         );
-        
+
         await this.sleep(delay);
       }
     }
@@ -174,9 +171,11 @@ export class S3Client implements IS3Client {
       'BucketNotEmpty',
     ];
 
-    return nonRetryableCodes.includes(error.name) || 
-           nonRetryableCodes.includes(error.Code) ||
-           (error.$metadata?.httpStatusCode >= 400 && error.$metadata?.httpStatusCode < 500);
+    return (
+      nonRetryableCodes.includes(error.name) ||
+      nonRetryableCodes.includes(error.Code) ||
+      (error.$metadata?.httpStatusCode >= 400 && error.$metadata?.httpStatusCode < 500)
+    );
   }
 
   /**

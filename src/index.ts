@@ -45,7 +45,12 @@ class PostgreSQLBackupApplication {
       const postgresClient = new PostgreSQLClient(this.config.postgresConnectionString);
       const s3Client = new S3Client(this.config);
       const retentionManager = new RetentionManager(s3Client, this.config);
-      const backupManager = new BackupManager(postgresClient, s3Client, retentionManager, this.config);
+      const backupManager = new BackupManager(
+        postgresClient,
+        s3Client,
+        retentionManager,
+        this.config
+      );
 
       // Validate configuration by testing connections
       this.logger.info('Validating configuration and testing connections...');
@@ -62,14 +67,13 @@ class PostgreSQLBackupApplication {
         {
           cronExpression: this.config.backupInterval,
           timezone: 'UTC',
-          runOnInit: false // Don't run backup immediately on startup
+          runOnInit: false, // Don't run backup immediately on startup
         },
         backupManager
         // Use default console logger for CronScheduler
       );
 
       this.logger.info('Application initialized successfully');
-
     } catch (error) {
       if (error instanceof ConfigurationError) {
         this.logger.error('Configuration error', error);
@@ -94,8 +98,9 @@ class PostgreSQLBackupApplication {
       this.cronScheduler.start();
 
       this.logger.info('PostgreSQL S3 Backup Service started successfully');
-      this.logger.info('Service is now running and will execute backups according to the configured schedule');
-
+      this.logger.info(
+        'Service is now running and will execute backups according to the configured schedule'
+      );
     } catch (error) {
       this.logger.error('Failed to start application', error as Error);
       process.exit(3);
@@ -126,7 +131,6 @@ class PostgreSQLBackupApplication {
       await this.sleep(2000);
 
       this.logger.info('PostgreSQL S3 Backup Service shutdown completed');
-
     } catch (error) {
       this.logger.error('Error during shutdown', error as Error);
       process.exit(4);
@@ -148,7 +152,7 @@ class PostgreSQLBackupApplication {
     });
 
     // Handle uncaught exceptions
-    process.on('uncaughtException', (error) => {
+    process.on('uncaughtException', error => {
       this.logger.error('Uncaught exception', error);
       this.shutdown().finally(() => process.exit(5));
     });
@@ -156,7 +160,7 @@ class PostgreSQLBackupApplication {
     // Handle unhandled promise rejections
     process.on('unhandledRejection', (reason, promise) => {
       this.logger.error('Unhandled promise rejection', new Error(String(reason)), {
-        promise: promise.toString()
+        promise: promise.toString(),
       });
       this.shutdown().finally(() => process.exit(6));
     });
@@ -192,7 +196,7 @@ export { PostgreSQLBackupApplication, main };
 
 // Start the application
 if (require.main === module) {
-  main().catch((error) => {
+  main().catch(error => {
     console.error('Fatal error starting application:', error);
     process.exit(7);
   });

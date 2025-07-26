@@ -47,22 +47,22 @@ docker-compose down
 
 ### Required Environment Variables
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `S3_BUCKET` | S3 bucket name for backups | `my-backup-bucket` |
-| `S3_ACCESS_KEY` | AWS access key ID | `AKIAIOSFODNN7EXAMPLE` |
-| `S3_SECRET_KEY` | AWS secret access key | `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY` |
-| `POSTGRES_CONNECTION_STRING` | PostgreSQL connection URL | `postgresql://user:pass@host:port/db` |
-| `BACKUP_INTERVAL` | Cron schedule for backups | `0 2 * * *` (daily at 2 AM) |
+| Variable                     | Description                | Example                                    |
+| ---------------------------- | -------------------------- | ------------------------------------------ |
+| `S3_BUCKET`                  | S3 bucket name for backups | `my-backup-bucket`                         |
+| `S3_ACCESS_KEY`              | AWS access key ID          | `AKIAIOSFODNN7EXAMPLE`                     |
+| `S3_SECRET_KEY`              | AWS secret access key      | `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY` |
+| `POSTGRES_CONNECTION_STRING` | PostgreSQL connection URL  | `postgresql://user:pass@host:port/db`      |
+| `BACKUP_INTERVAL`            | Cron schedule for backups  | `0 2 * * *` (daily at 2 AM)                |
 
 ### Optional Environment Variables
 
-| Variable | Description | Default | Example |
-|----------|-------------|---------|---------|
-| `S3_URL` | Custom S3 endpoint | AWS S3 | `https://minio.example.com` |
-| `S3_PATH` | S3 path prefix | `postgres-backups` | `backups/production` |
-| `BACKUP_RETENTION_DAYS` | Days to keep backups | Keep all | `30` |
-| `LOG_LEVEL` | Logging verbosity | `info` | `debug` |
+| Variable                | Description          | Default            | Example                     |
+| ----------------------- | -------------------- | ------------------ | --------------------------- |
+| `S3_URL`                | Custom S3 endpoint   | AWS S3             | `https://minio.example.com` |
+| `S3_PATH`               | S3 path prefix       | `postgres-backups` | `backups/production`        |
+| `BACKUP_RETENTION_DAYS` | Days to keep backups | Keep all           | `30`                        |
+| `LOG_LEVEL`             | Logging verbosity    | `info`             | `debug`                     |
 
 ## Customization Examples
 
@@ -85,6 +85,7 @@ services:
 ```
 
 Deploy multiple instances:
+
 ```bash
 docker-compose -f docker-compose.yml -f docker-compose.db1.yml up -d
 ```
@@ -97,7 +98,7 @@ Modify the `deploy.resources` section based on your database size:
 deploy:
   resources:
     limits:
-      memory: 1G        # For large databases
+      memory: 1G # For large databases
       cpus: '1.0'
     reservations:
       memory: 512M
@@ -133,11 +134,11 @@ services:
     # ... other config
     restart: always
     logging:
-      driver: "json-file"
+      driver: 'json-file'
       options:
-        max-size: "10m"
-        max-file: "3"
-    
+        max-size: '10m'
+        max-file: '3'
+
     # Use secrets instead of environment variables
     secrets:
       - s3_access_key
@@ -155,17 +156,18 @@ secrets:
 
 ## Cron Schedule Examples
 
-| Schedule | Description |
-|----------|-------------|
-| `0 2 * * *` | Daily at 2:00 AM |
-| `0 */6 * * *` | Every 6 hours |
-| `0 2 * * 0` | Weekly on Sunday at 2:00 AM |
-| `0 2 1 * *` | Monthly on the 1st at 2:00 AM |
-| `0 2 * * 1-5` | Weekdays only at 2:00 AM |
+| Schedule      | Description                   |
+| ------------- | ----------------------------- |
+| `0 2 * * *`   | Daily at 2:00 AM              |
+| `0 */6 * * *` | Every 6 hours                 |
+| `0 2 * * 0`   | Weekly on Sunday at 2:00 AM   |
+| `0 2 1 * *`   | Monthly on the 1st at 2:00 AM |
+| `0 2 * * 1-5` | Weekdays only at 2:00 AM      |
 
 ## Monitoring and Troubleshooting
 
 ### View Logs
+
 ```bash
 # Follow logs in real-time
 docker-compose logs -f postgres-backup
@@ -175,6 +177,7 @@ docker-compose logs --tail=100 postgres-backup
 ```
 
 ### Health Check
+
 ```bash
 # Check container status
 docker-compose ps
@@ -200,26 +203,132 @@ docker inspect postgres-s3-backup | grep -A 10 Health
 
 ## Development
 
-### Building Locally
+### Prerequisites
+
+- Node.js 18+ and npm
+- Docker and Docker Compose
+- PostgreSQL client tools (for local development)
+
+### Local Development Setup
+
 ```bash
-# Build the image
-docker-compose build
+# Clone the repository
+git clone <repository-url>
+cd postgres-s3-backup
+
+# Install dependencies
+npm install
+
+# Copy environment template
+cp .env.example .env
+# Edit .env with your configuration
+
+# Run type checking
+npm run type-check
+
+# Run linting
+npm run lint
 
 # Run tests
 npm test
 
-# Development with hot reload
+# Run tests with coverage
+npm run test:coverage
+
+# Start development server with hot reload
 npm run dev
 ```
 
-### Environment Setup
-```bash
-# Install dependencies
-npm install
+### Build Scripts
 
-# Run TypeScript compilation
+```bash
+# Clean build artifacts
+npm run clean
+
+# Build TypeScript to JavaScript
 npm run build
 
-# Run linting
-npm run lint
+# Build with watch mode for development
+npm run build:watch
+
+# Format code with Prettier
+npm run format
+
+# Check code formatting
+npm run format:check
+
+# Fix linting issues automatically
+npm run lint:fix
 ```
+
+### Docker Operations
+
+```bash
+# Build Docker image
+npm run docker:build
+
+# Run container with environment file
+npm run docker:run
+
+# Start with Docker Compose
+npm run docker:compose:up
+
+# Stop Docker Compose services
+npm run docker:compose:down
+
+# View Docker Compose logs
+npm run docker:compose:logs
+```
+
+### Testing
+
+```bash
+# Run all tests
+npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Run tests with coverage report
+npm run test:coverage
+
+# Run tests for CI (no watch, with coverage)
+npm run test:ci
+```
+
+### Code Quality
+
+The project uses ESLint and Prettier for code quality:
+
+- **ESLint**: Configured with TypeScript rules and strict type checking
+- **Prettier**: Enforces consistent code formatting
+- **TypeScript**: Strict mode enabled with comprehensive type checking
+
+### Project Structure
+
+```
+postgres-s3-backup/
+├── src/                    # Source code
+│   ├── clients/           # Service clients (S3, PostgreSQL, etc.)
+│   ├── config/            # Configuration management
+│   ├── interfaces/        # TypeScript interfaces
+│   └── index.ts          # Application entry point
+├── tests/                 # Test files
+├── dist/                  # Compiled JavaScript (generated)
+├── coverage/              # Test coverage reports (generated)
+├── docker-compose.yml     # Docker Compose configuration
+├── Dockerfile            # Docker image definition
+├── .env.example          # Environment variables template
+└── README.md             # This file
+```
+
+### Contributing
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature-name`
+3. Make your changes and add tests
+4. Run the full test suite: `npm run test:ci`
+5. Check code quality: `npm run lint && npm run format:check`
+6. Commit your changes: `git commit -am 'Add feature'`
+7. Push to the branch: `git push origin feature-name`
+8. Submit a pull request

@@ -1,4 +1,9 @@
-import { BackupManager, BackupError, ValidationError, RetryableError } from '../src/clients/BackupManager';
+import {
+  BackupManager,
+  BackupError,
+  ValidationError,
+  RetryableError,
+} from '../src/clients/BackupManager';
 import { PostgreSQLClient } from '../src/interfaces/PostgreSQLClient';
 import { S3Client } from '../src/interfaces/S3Client';
 import { RetentionManager } from '../src/interfaces/RetentionManager';
@@ -24,7 +29,7 @@ describe('BackupManager', () => {
   beforeEach(() => {
     // Reset all mocks
     jest.clearAllMocks();
-    
+
     // Mock fs
     mockFs = fs as jest.Mocked<typeof fs>;
     mockFs.unlink.mockResolvedValue(undefined);
@@ -89,7 +94,9 @@ describe('BackupManager', () => {
       };
 
       mockPostgresClient.createBackup.mockResolvedValue(mockBackupInfo);
-      mockS3Client.uploadFile.mockResolvedValue('s3://test-bucket/backups/postgres-backup-2024-01-15_14-30-45.sql.gz');
+      mockS3Client.uploadFile.mockResolvedValue(
+        's3://test-bucket/backups/postgres-backup-2024-01-15_14-30-45.sql.gz'
+      );
       mockRetentionManager.cleanupExpiredBackups.mockResolvedValue({
         deletedCount: 2,
         totalCount: 10,
@@ -102,9 +109,13 @@ describe('BackupManager', () => {
 
       // Assert
       expect(result.success).toBe(true);
-      expect(result.fileName).toMatch(/^postgres-backup-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.sql\.gz$/);
+      expect(result.fileName).toMatch(
+        /^postgres-backup-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.sql\.gz$/
+      );
       expect(result.fileSize).toBe(1024000);
-      expect(result.s3Location).toBe('s3://test-bucket/backups/postgres-backup-2024-01-15_14-30-45.sql.gz');
+      expect(result.s3Location).toBe(
+        's3://test-bucket/backups/postgres-backup-2024-01-15_14-30-45.sql.gz'
+      );
       expect(result.duration).toBeGreaterThanOrEqual(0);
       expect(result.error).toBeUndefined();
 
@@ -114,7 +125,9 @@ describe('BackupManager', () => {
       );
       expect(mockS3Client.uploadFile).toHaveBeenCalledWith(
         expect.stringMatching(/postgres-backup-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.sql\.gz$/),
-        expect.stringMatching(/^backups\/postgres-backup-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.sql\.gz$/)
+        expect.stringMatching(
+          /^backups\/postgres-backup-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.sql\.gz$/
+        )
       );
       expect(mockFs.unlink).toHaveBeenCalledWith(
         expect.stringMatching(/postgres-backup-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.sql\.gz$/)
@@ -180,8 +193,12 @@ describe('BackupManager', () => {
       };
 
       mockPostgresClient.createBackup.mockResolvedValue(mockBackupInfo);
-      mockS3Client.uploadFile.mockResolvedValue('s3://test-bucket/backups/postgres-backup-2024-01-15_14-30-45.sql.gz');
-      mockRetentionManager.cleanupExpiredBackups.mockRejectedValue(new Error('Retention cleanup failed'));
+      mockS3Client.uploadFile.mockResolvedValue(
+        's3://test-bucket/backups/postgres-backup-2024-01-15_14-30-45.sql.gz'
+      );
+      mockRetentionManager.cleanupExpiredBackups.mockRejectedValue(
+        new Error('Retention cleanup failed')
+      );
 
       // Act
       const result = await backupManager.executeBackup();
@@ -207,14 +224,16 @@ describe('BackupManager', () => {
       };
 
       mockPostgresClient.createBackup.mockResolvedValue(mockBackupInfo);
-      mockS3Client.uploadFile.mockResolvedValue('s3://test-bucket/backups/postgres-backup-2024-01-15_14-30-45.sql.gz');
+      mockS3Client.uploadFile.mockResolvedValue(
+        's3://test-bucket/backups/postgres-backup-2024-01-15_14-30-45.sql.gz'
+      );
       mockRetentionManager.cleanupExpiredBackups.mockResolvedValue({
         deletedCount: 0,
         totalCount: 5,
         deletedKeys: [],
         errors: [],
       });
-      
+
       // Mock file cleanup to fail with non-ENOENT error
       const permissionError = new Error('Permission denied') as any;
       permissionError.code = 'EPERM';
@@ -222,7 +241,7 @@ describe('BackupManager', () => {
 
       // Act
       const result = await backupManager.executeBackup();
-      
+
       // Assert - backup should fail due to cleanup error
       expect(result.success).toBe(false);
       expect(result.error).toContain('Permission denied');
@@ -238,14 +257,16 @@ describe('BackupManager', () => {
       };
 
       mockPostgresClient.createBackup.mockResolvedValue(mockBackupInfo);
-      mockS3Client.uploadFile.mockResolvedValue('s3://test-bucket/backups/postgres-backup-2024-01-15_14-30-45.sql.gz');
+      mockS3Client.uploadFile.mockResolvedValue(
+        's3://test-bucket/backups/postgres-backup-2024-01-15_14-30-45.sql.gz'
+      );
       mockRetentionManager.cleanupExpiredBackups.mockResolvedValue({
         deletedCount: 0,
         totalCount: 5,
         deletedKeys: [],
         errors: [],
       });
-      
+
       // Mock file cleanup to fail with ENOENT (file not found)
       const enoentError = new Error('File not found') as any;
       enoentError.code = 'ENOENT';
@@ -302,7 +323,7 @@ describe('BackupManager', () => {
       // Arrange
       mockPostgresClient.testConnection.mockResolvedValue(true);
       mockS3Client.testConnection.mockResolvedValue(true);
-      
+
       // Create manager with invalid cron
       const invalidConfig = { ...mockConfig, backupInterval: 'invalid-cron' };
       const invalidManager = new BackupManager(
@@ -342,7 +363,9 @@ describe('BackupManager', () => {
       };
 
       mockPostgresClient.createBackup.mockResolvedValue(mockBackupInfo);
-      mockS3Client.uploadFile.mockResolvedValue('s3://test-bucket/backups/postgres-backup-test.sql.gz');
+      mockS3Client.uploadFile.mockResolvedValue(
+        's3://test-bucket/backups/postgres-backup-test.sql.gz'
+      );
       mockRetentionManager.cleanupExpiredBackups.mockResolvedValue({
         deletedCount: 0,
         totalCount: 0,
@@ -354,12 +377,16 @@ describe('BackupManager', () => {
       const result = await backupManager.executeBackup();
 
       // Assert - Check that filename follows the correct format
-      expect(result.fileName).toMatch(/^postgres-backup-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.sql\.gz$/);
-      
+      expect(result.fileName).toMatch(
+        /^postgres-backup-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.sql\.gz$/
+      );
+
       // Verify the timestamp format is valid by parsing it
-      const timestampMatch = result.fileName.match(/postgres-backup-(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})\.sql\.gz/);
+      const timestampMatch = result.fileName.match(
+        /postgres-backup-(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})\.sql\.gz/
+      );
       expect(timestampMatch).not.toBeNull();
-      
+
       if (timestampMatch) {
         const timestampStr = timestampMatch[1];
         // Convert to ISO format and verify it's a valid date
@@ -397,7 +424,9 @@ describe('BackupManager', () => {
       // Assert
       expect(mockS3Client.uploadFile).toHaveBeenCalledWith(
         expect.any(String),
-        expect.stringMatching(/^backups\/postgres-backup-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.sql\.gz$/)
+        expect.stringMatching(
+          /^backups\/postgres-backup-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.sql\.gz$/
+        )
       );
     });
 
@@ -455,7 +484,9 @@ describe('BackupManager', () => {
       };
 
       mockPostgresClient.createBackup.mockResolvedValue(mockBackupInfo);
-      mockS3Client.uploadFile.mockResolvedValue('s3://test-bucket/backups/postgres/test-backup.sql.gz');
+      mockS3Client.uploadFile.mockResolvedValue(
+        's3://test-bucket/backups/postgres/test-backup.sql.gz'
+      );
       mockRetentionManager.cleanupExpiredBackups.mockResolvedValue({
         deletedCount: 0,
         totalCount: 0,
@@ -469,7 +500,9 @@ describe('BackupManager', () => {
       // Assert
       expect(mockS3Client.uploadFile).toHaveBeenCalledWith(
         expect.any(String),
-        expect.stringMatching(/^backups\/postgres\/postgres-backup-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.sql\.gz$/)
+        expect.stringMatching(
+          /^backups\/postgres\/postgres-backup-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.sql\.gz$/
+        )
       );
     });
   });
@@ -551,11 +584,11 @@ describe('BackupManager', () => {
 
       // Act
       const backupPromise = backupManager.executeBackup();
-      
+
       // Fast-forward through retry delays
       await jest.advanceTimersByTimeAsync(5000); // First retry delay
       await jest.advanceTimersByTimeAsync(10000); // Second retry delay
-      
+
       const result = await backupPromise;
 
       // Assert
@@ -584,11 +617,11 @@ describe('BackupManager', () => {
 
       // Act
       const backupPromise = backupManager.executeBackup();
-      
+
       // Fast-forward through all retry delays
       jest.advanceTimersByTime(5000); // First retry
       jest.advanceTimersByTime(10000); // Second retry
-      
+
       const result = await backupPromise;
 
       // Assert
@@ -651,16 +684,17 @@ describe('BackupManager', () => {
 
       // Assert - Check that console.log was called with operation IDs
       const logCalls = (console.log as jest.Mock).mock.calls;
-      const operationIdCalls = logCalls.filter(call => 
-        call[0] && call[0].includes('[backup-') && call[0].includes('Starting backup operation')
+      const operationIdCalls = logCalls.filter(
+        call =>
+          call[0] && call[0].includes('[backup-') && call[0].includes('Starting backup operation')
       );
-      
+
       expect(operationIdCalls.length).toBe(2);
-      
+
       // Extract operation IDs and verify they're different
       const operationId1 = operationIdCalls[0][0].match(/\[([^\]]+)\]/)?.[1];
       const operationId2 = operationIdCalls[1][0].match(/\[([^\]]+)\]/)?.[1];
-      
+
       expect(operationId1).toBeDefined();
       expect(operationId2).toBeDefined();
       expect(operationId1).not.toBe(operationId2);
@@ -703,10 +737,10 @@ describe('BackupManager', () => {
 
       // Assert
       const errorCalls = (console.error as jest.Mock).mock.calls;
-      const stackTraceCalls = errorCalls.filter(call => 
-        call[0] && call[0].includes('Stack trace:')
+      const stackTraceCalls = errorCalls.filter(
+        call => call[0] && call[0].includes('Stack trace:')
       );
-      
+
       expect(stackTraceCalls.length).toBeGreaterThan(0);
     });
   });

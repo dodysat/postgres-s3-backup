@@ -7,7 +7,11 @@ import { PostgreSQLClient as IPostgreSQLClient, BackupInfo } from '../interfaces
  * Custom error classes for PostgreSQL operations
  */
 export class PostgreSQLError extends Error {
-  constructor(message: string, public readonly operation: string, public readonly cause?: Error) {
+  constructor(
+    message: string,
+    public readonly operation: string,
+    public readonly cause?: Error
+  ) {
     super(message);
     this.name = 'PostgreSQLError';
     if (cause) {
@@ -24,7 +28,11 @@ export class ConnectionError extends PostgreSQLError {
 }
 
 export class BackupCreationError extends PostgreSQLError {
-  constructor(message: string, public readonly exitCode?: number, cause?: Error) {
+  constructor(
+    message: string,
+    public readonly exitCode?: number,
+    cause?: Error
+  ) {
     super(message, 'backup_creation', cause);
     this.name = 'BackupCreationError';
   }
@@ -47,7 +55,7 @@ export class PostgreSQLClient implements IPostgreSQLClient {
    */
   async testConnection(): Promise<boolean> {
     const client = new Client({ connectionString: this.connectionString });
-    
+
     try {
       await client.connect();
       await client.query('SELECT 1');
@@ -55,7 +63,7 @@ export class PostgreSQLClient implements IPostgreSQLClient {
     } catch (error) {
       const formattedError = this.formatError(error);
       console.error('PostgreSQL connection test failed:', formattedError);
-      
+
       // Log additional context for debugging
       if (error instanceof Error) {
         console.error('Connection error details:', {
@@ -63,14 +71,17 @@ export class PostgreSQLClient implements IPostgreSQLClient {
           message: error.message,
           code: (error as any).code,
           severity: (error as any).severity,
-          detail: (error as any).detail
+          detail: (error as any).detail,
         });
       }
-      
+
       return false;
     } finally {
-      await client.end().catch((cleanupError) => {
-        console.warn('Failed to close database connection during cleanup:', this.formatError(cleanupError));
+      await client.end().catch(cleanupError => {
+        console.warn(
+          'Failed to close database connection during cleanup:',
+          this.formatError(cleanupError)
+        );
       });
     }
   }
@@ -80,43 +91,51 @@ export class PostgreSQLClient implements IPostgreSQLClient {
    */
   async createBackup(outputPath: string): Promise<BackupInfo> {
     const timestamp = new Date();
-    
+
     try {
       console.log(`Creating PostgreSQL backup for database: ${this.databaseName}`);
-      
+
       // Ensure output directory exists
       const outputDir = outputPath.substring(0, outputPath.lastIndexOf('/'));
       if (outputDir) {
         try {
           await fs.mkdir(outputDir, { recursive: true });
         } catch (error) {
-          throw new BackupCreationError(`Failed to create output directory ${outputDir}: ${this.formatError(error)}`, undefined, error instanceof Error ? error : undefined);
+          throw new BackupCreationError(
+            `Failed to create output directory ${outputDir}: ${this.formatError(error)}`,
+            undefined,
+            error instanceof Error ? error : undefined
+          );
         }
       }
 
       // Execute pg_dump with compression
       await this.executePgDump(outputPath);
-      
+
       // Verify backup file was created and get stats
       let stats;
       try {
         stats = await fs.stat(outputPath);
       } catch (error) {
-        throw new BackupCreationError(`Backup file was not created at ${outputPath}: ${this.formatError(error)}`, undefined, error instanceof Error ? error : undefined);
+        throw new BackupCreationError(
+          `Backup file was not created at ${outputPath}: ${this.formatError(error)}`,
+          undefined,
+          error instanceof Error ? error : undefined
+        );
       }
-      
+
       // Validate backup file size
       if (stats.size === 0) {
         throw new BackupCreationError(`Backup file is empty: ${outputPath}`, undefined);
       }
-      
+
       console.log(`PostgreSQL backup created successfully: ${stats.size} bytes`);
-      
+
       return {
         filePath: outputPath,
         fileSize: stats.size,
         databaseName: this.databaseName,
-        timestamp
+        timestamp,
       };
     } catch (error) {
       // Clean up partial file if it exists
@@ -124,15 +143,22 @@ export class PostgreSQLClient implements IPostgreSQLClient {
         await fs.unlink(outputPath);
         console.log(`Cleaned up partial backup file: ${outputPath}`);
       } catch (cleanupError) {
-        console.warn(`Failed to cleanup partial backup file ${outputPath}:`, this.formatError(cleanupError));
+        console.warn(
+          `Failed to cleanup partial backup file ${outputPath}:`,
+          this.formatError(cleanupError)
+        );
       }
-      
+
       // Re-throw with proper error type
       if (error instanceof BackupCreationError) {
         throw error;
       }
-      
-      throw new BackupCreationError(`Failed to create backup: ${this.formatError(error)}`, undefined, error instanceof Error ? error : undefined);
+
+      throw new BackupCreationError(
+        `Failed to create backup: ${this.formatError(error)}`,
+        undefined,
+        error instanceof Error ? error : undefined
+      );
     }
   }
 
@@ -157,21 +183,22 @@ export class PostgreSQLClient implements IPostgreSQLClient {
         '--no-owner',
         '--format=custom',
         '--compress=9',
-        '--file', outputPath
+        '--file',
+        outputPath,
       ];
 
       console.log(`Executing pg_dump for database: ${this.databaseName}`);
 
       const pgDump = spawn('pg_dump', args, {
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env }
+        env: { ...process.env },
       });
 
       let stderr = '';
       let stdout = '';
       let isTimedOut = false;
 
-      pgDump.stdout.on('data', (data) => {
+      pgDump.stdout.on('data', data => {
         stdout += data.toString();
         // Log progress for long-running backups
         if (stdout.includes('COPY') || stdout.includes('CREATE')) {
@@ -179,17 +206,17 @@ export class PostgreSQLClient implements IPostgreSQLClient {
         }
       });
 
-      pgDump.stderr.on('data', (data) => {
+      pgDump.stderr.on('data', data => {
         const chunk = data.toString();
         stderr += chunk;
-        
+
         // Log warnings but don't fail the backup
         if (chunk.includes('WARNING') || chunk.includes('NOTICE')) {
           console.warn('pg_dump warning:', chunk.trim());
         }
       });
 
-      pgDump.on('close', (code) => {
+      pgDump.on('close', code => {
         if (isTimedOut) {
           return; // Timeout handler already called reject
         }
@@ -204,7 +231,7 @@ export class PostgreSQLClient implements IPostgreSQLClient {
         }
       });
 
-      pgDump.on('error', (error) => {
+      pgDump.on('error', error => {
         if (isTimedOut) {
           return; // Timeout handler already called reject
         }
@@ -214,23 +241,30 @@ export class PostgreSQLClient implements IPostgreSQLClient {
       });
 
       // Set timeout for long-running backups (30 minutes)
-      const timeout = setTimeout(() => {
-        isTimedOut = true;
-        console.warn('pg_dump timeout reached, terminating process...');
-        
-        // Try graceful termination first
-        pgDump.kill('SIGTERM');
-        
-        // Force kill after 10 seconds if still running
-        setTimeout(() => {
-          if (!pgDump.killed) {
-            console.warn('Force killing pg_dump process...');
-            pgDump.kill('SIGKILL');
-          }
-        }, 10000);
-        
-        reject(new BackupCreationError('pg_dump timeout after 30 minutes. This may indicate a very large database or connection issues.'));
-      }, 30 * 60 * 1000);
+      const timeout = setTimeout(
+        () => {
+          isTimedOut = true;
+          console.warn('pg_dump timeout reached, terminating process...');
+
+          // Try graceful termination first
+          pgDump.kill('SIGTERM');
+
+          // Force kill after 10 seconds if still running
+          setTimeout(() => {
+            if (!pgDump.killed) {
+              console.warn('Force killing pg_dump process...');
+              pgDump.kill('SIGKILL');
+            }
+          }, 10000);
+
+          reject(
+            new BackupCreationError(
+              'pg_dump timeout after 30 minutes. This may indicate a very large database or connection issues.'
+            )
+          );
+        },
+        30 * 60 * 1000
+      );
 
       pgDump.on('close', () => {
         clearTimeout(timeout);
@@ -245,7 +279,10 @@ export class PostgreSQLClient implements IPostgreSQLClient {
     const lowerStderr = stderr.toLowerCase();
 
     // Common pg_dump error patterns
-    if (lowerStderr.includes('authentication failed') || lowerStderr.includes('password authentication failed')) {
+    if (
+      lowerStderr.includes('authentication failed') ||
+      lowerStderr.includes('password authentication failed')
+    ) {
       return `pg_dump authentication failed (exit code ${exitCode}). Please check database credentials.`;
     }
 
@@ -257,7 +294,10 @@ export class PostgreSQLClient implements IPostgreSQLClient {
       return `pg_dump failed: insufficient permissions to access database (exit code ${exitCode}).`;
     }
 
-    if (lowerStderr.includes('connection') && (lowerStderr.includes('refused') || lowerStderr.includes('timeout'))) {
+    if (
+      lowerStderr.includes('connection') &&
+      (lowerStderr.includes('refused') || lowerStderr.includes('timeout'))
+    ) {
       return `pg_dump failed: unable to connect to database server (exit code ${exitCode}). Please check connection settings.`;
     }
 
@@ -270,7 +310,8 @@ export class PostgreSQLClient implements IPostgreSQLClient {
     }
 
     // Generic error with context
-    const errorContext = stderr.trim() || stdout.trim() || 'No additional error information available';
+    const errorContext =
+      stderr.trim() || stdout.trim() || 'No additional error information available';
     return `pg_dump failed with exit code ${exitCode}. Error details: ${errorContext}`;
   }
 
@@ -307,7 +348,10 @@ export class PostgreSQLClient implements IPostgreSQLClient {
   private extractDatabaseName(connectionString: string): string {
     try {
       // Handle both URL format and key=value format
-      if (connectionString.startsWith('postgresql://') || connectionString.startsWith('postgres://')) {
+      if (
+        connectionString.startsWith('postgresql://') ||
+        connectionString.startsWith('postgres://')
+      ) {
         const url = new URL(connectionString);
         return url.pathname.substring(1) || 'postgres';
       } else {
