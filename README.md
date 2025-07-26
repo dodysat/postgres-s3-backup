@@ -20,7 +20,7 @@ A containerized service that automatically creates compressed PostgreSQL databas
 1. **Clone the repository**
    ```bash
    git clone <repository-url>
-   cd pg-backup
+   cd postgres-s3-backup
    ```
 
 2. **Configure environment variables**
@@ -38,19 +38,19 @@ A containerized service that automatically creates compressed PostgreSQL databas
 
 1. **Build the image**
    ```bash
-   docker build -t pg-backup .
+   docker build -t postgres-s3-backup .
    ```
 
 2. **Run with environment variables**
    ```bash
    docker run -d \
-     --name pg-backup \
+     --name postgres-s3-backup \
      -e S3_BUCKET=my-backup-bucket \
      -e S3_ACCESS_KEY=your-key \
      -e S3_SECRET_KEY=your-secret \
      -e POSTGRES_CONNECTION_STRING=postgresql://user:pass@host:5432/db \
      -e BACKUP_INTERVAL="0 2 * * *" \
-     pg-backup
+     postgres-s3-backup
    ```
 
 ## Configuration
@@ -181,7 +181,7 @@ The application uses structured JSON logging. Check logs for detailed error info
 docker-compose logs -f
 
 # Docker
-docker logs pg-backup
+docker logs postgres-s3-backup
 
 # Direct
 npm start

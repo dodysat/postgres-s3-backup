@@ -1,5 +1,5 @@
 {
-  "name": "pg-backup",
+  "name": "postgres-s3-backup",
   "version": "1.0.0",
   "description": "PostgreSQL S3 Backup - Containerized service for automated database backups",
   "main": "dist/index.js",
@@ -17,8 +17,8 @@
     "format": "prettier --write src/**/*.ts",
     "format:check": "prettier --check src/**/*.ts",
     "type-check": "tsc --noEmit",
-    "docker:build": "docker build -t pg-backup .",
-    "docker:run": "docker run --env-file .env pg-backup",
+    "docker:build": "docker build -t postgres-s3-backup .",
+    "docker:run": "docker run --env-file .env postgres-s3-backup",
     "docker:compose": "docker-compose up -d",
     "docker:compose:down": "docker-compose down",
     "docker:compose:logs": "docker-compose logs -f",

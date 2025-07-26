@@ -52,7 +52,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/pg-backup:${{ steps.version.outputs.tag }}
+          tags: ${{ secrets.DOCKER_USERNAME }}/postgres-s3-backup:${{ steps.version.outputs.tag }}
           platforms: linux/amd64,linux/arm64
 
       - name: Image digest

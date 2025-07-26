@@ -2,7 +2,7 @@ version: '3.8'
 services:
   postgres-backup:
     build: .
-    image: pg-backup:latest
+    image: postgres-s3-backup:latest
     environment:
       # Required
       - S3_BUCKET=my-backup-bucket
