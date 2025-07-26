@@ -16,8 +16,8 @@ export class PostgreSQLClient {
 
   public async testConnection(): Promise<boolean> {
     try {
-      // Use pg_dump with --schema-only and --no-data for a quick connection test
-      const testCommand = `pg_dump --schema-only --no-data --dbname="${this.config.postgresConnectionString}" --no-password`;
+      // Use pg_dump with --schema-only for a quick connection test
+      const testCommand = `pg_dump --schema-only --dbname="${this.config.postgresConnectionString}" --no-password`;
 
       await execAsync(testCommand, { timeout: 10000 }); // 10 second timeout
       return true;
