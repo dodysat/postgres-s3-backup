@@ -2,6 +2,32 @@
 
 Automated PostgreSQL database backup solution that uploads compressed backups to Amazon S3 on a configurable schedule.
 
+[![Docker Pulls](https://img.shields.io/docker/pulls/username/postgres-s3-backup)](https://hub.docker.com/r/username/postgres-s3-backup)
+[![Docker Image Size](https://img.shields.io/docker/image-size/username/postgres-s3-backup/latest)](https://hub.docker.com/r/username/postgres-s3-backup)
+[![GitHub Release](https://img.shields.io/github/v/release/username/postgres-s3-backup)](https://github.com/username/postgres-s3-backup/releases)
+
+## Docker Hub
+
+Pre-built Docker images are available on Docker Hub:
+
+```bash
+# Pull the latest version
+docker pull username/postgres-s3-backup:latest
+
+# Pull a specific version
+docker pull username/postgres-s3-backup:1.2.3
+```
+
+**Available Tags:**
+- `latest` - Latest stable release
+- `1.2.3` - Specific version tags
+- `1.2` - Latest patch version of 1.2.x
+- `1` - Latest minor version of 1.x.x
+
+**Supported Platforms:**
+- `linux/amd64` (Intel/AMD 64-bit)
+- `linux/arm64` (ARM 64-bit, Apple Silicon)
+
 ## Quick Start with Docker Compose
 
 ### 1. Clone and Setup

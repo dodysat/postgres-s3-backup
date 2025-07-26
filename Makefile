@@ -213,10 +213,20 @@ health-check: ## Check service health
 		echo "$(RED)Service is not running$(NC)"; \
 	fi
 
+# Docker Hub Commands
+docker-hub-setup: ## Set up Docker Hub publishing
+	@echo "$(BLUE)Setting up Docker Hub publishing...$(NC)"
+	./scripts/setup-docker-hub.sh
+
+docker-hub-check: ## Check Docker Hub setup
+	@echo "$(BLUE)Checking Docker Hub setup...$(NC)"
+	./scripts/setup-docker-hub.sh --check-only
+
 # Documentation Commands
 docs: ## Generate documentation (if applicable)
 	@echo "$(BLUE)Documentation available in README.md$(NC)"
 	@echo "View online documentation at: https://github.com/your-repo/postgres-s3-backup"
+	@echo "$(BLUE)Docker Hub setup guide: docs/DOCKER_HUB_SETUP.md$(NC)"
 
 # Quick Commands
 quick-start: setup up ## Quick start: setup and run

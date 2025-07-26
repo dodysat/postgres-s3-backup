@@ -2,7 +2,12 @@ version: '3.8'
 
 services:
   postgres-backup:
-    build: .
+    # Use pre-built image from Docker Hub (recommended)
+    image: username/postgres-s3-backup:latest
+    
+    # Or build locally (uncomment the line below and comment the image line above)
+    # build: .
+    
     container_name: postgres-s3-backup
     restart: unless-stopped
     
