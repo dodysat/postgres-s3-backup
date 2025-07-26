@@ -76,13 +76,15 @@ export class ConfigurationManager {
     }
 
     // Validate each part has valid characters
-    const validChars = /^[\d*/,\-\?LW#]+$/;
+    const validChars = /^[\d*/,\-?LW#]+$/;
     return cronParts.every((part) => validChars.test(part));
   }
 
   public getSanitizedConfig(): Record<string, unknown> {
-    const { s3AccessKey, s3SecretKey, postgresConnectionString, ...sanitized } =
-      this.config;
+    const sanitized = { ...this.config } as any;
+    delete sanitized.s3AccessKey;
+    delete sanitized.s3SecretKey;
+    delete sanitized.postgresConnectionString;
     return {
       ...sanitized,
       s3AccessKey: '[REDACTED]',

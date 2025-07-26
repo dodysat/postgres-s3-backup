@@ -100,9 +100,7 @@ export class PostgreSQLClient {
       return dbName;
     } catch (error) {
       // Fallback: try to extract from connection string manually
-      const match = connectionString.match(
-        /\/\/([^:]+:[^@]+@)?[^\/]+\/([^?]+)/
-      );
+      const match = connectionString.match(/\/\/([^:]+:[^@]+@)?[^/]+\/([^?]+)/);
       if (match && match[2]) {
         return match[2];
       }
