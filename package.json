@@ -5,15 +5,25 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
+    "build:clean": "rm -rf dist && npm run build",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
     "test": "jest",
     "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:integration": "jest src/integration/",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
     "format": "prettier --write src/**/*.ts",
+    "format:check": "prettier --check src/**/*.ts",
+    "type-check": "tsc --noEmit",
     "docker:build": "docker build -t pg-backup .",
-    "docker:run": "docker run --env-file .env pg-backup"
+    "docker:run": "docker run --env-file .env pg-backup",
+    "docker:compose": "docker-compose up -d",
+    "docker:compose:down": "docker-compose down",
+    "docker:compose:logs": "docker-compose logs -f",
+    "prebuild": "npm run lint && npm run type-check",
+    "prestart": "npm run build"
   },
   "keywords": [
     "postgresql",

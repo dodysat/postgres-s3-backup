@@ -59,6 +59,12 @@ export class Logger {
     Logger.getLogger().warn(msg, meta);
   }
   public static error(msg: any, meta?: any) {
+    if (meta && meta.error instanceof Error) {
+      meta.stack = meta.error.stack;
+    } else if (msg instanceof Error) {
+      meta = { ...(meta || {}), stack: msg.stack };
+      msg = msg.message;
+    }
     Logger.getLogger().error(msg, meta);
   }
   public static debug(msg: any, meta?: any) {

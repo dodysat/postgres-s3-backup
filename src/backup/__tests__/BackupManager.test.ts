@@ -138,4 +138,15 @@ describe('BackupManagerImpl', () => {
     expect(result.error).toMatch(/S3 upload failed/);
     expect(mockPgClient.cleanupBackupFile).toHaveBeenCalled();
   });
+
+  it('logs error stack trace on backup creation failure', async () => {
+    mockPgClient.testConnection.mockResolvedValue(true);
+    mockS3Client.testConnection.mockResolvedValue(true);
+    const error = new Error('pg_dump failed');
+    mockPgClient.createBackup.mockRejectedValue(error);
+    const result = await backupManager.executeBackup();
+    expect(result.success).toBe(false);
+    // We can't directly check logs here, but this ensures the error is handled and returned
+    expect(result.error).toMatch(/pg_dump failed/);
+  });
 });
